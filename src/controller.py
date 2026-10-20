@@ -1,7 +1,7 @@
 """
-Adaptive Hallucination Mitigation Controller.
+Adaptive Hallucination Mitigation Controller (Phase 2 LLM Integration).
 
-Orchestrates signal extraction, cost-aware action selection, action execution,
+Orchestrates signal extraction, cost-aware action selection, model adapter draft generation,
 evidence verification, revision, cost accounting, and experiment logging.
 """
 
@@ -26,7 +26,12 @@ from src.calculator import SafeCalculator, CalculationResult
 from src.retrieval import LocalCorpusRetriever, RetrievalResult, RetrievedPassage
 from src.verification import EvidenceVerifier, VerificationResult, VerificationStatus
 from src.revision import AnswerReviser, RevisionResult
-from src.llm_provider import BaseLLMProvider, LLMResponse, get_llm_provider
+from src.model_adapter import (
+    BaseModelAdapter,
+    ModelDraft,
+    GenerationSettings,
+    get_model_adapter,
+)
 from src.cost_tracker import CostTracker, CostAccounting
 from src.logging_service import LoggingService, RunRecord, get_logging_service
 
@@ -47,7 +52,7 @@ class ExecutionResult:
     retrieval_result: Optional[RetrievalResult] = None
     verification_result: Optional[VerificationResult] = None
     revision_result: Optional[RevisionResult] = None
-    llm_response: Optional[LLMResponse] = None
+    model_draft: Optional[ModelDraft] = None
     cost: Optional[CostAccounting] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -63,25 +68,27 @@ class ExecutionResult:
             "retrieval_result": self.retrieval_result.to_dict() if self.retrieval_result else None,
             "verification_result": self.verification_result.to_dict() if self.verification_result else None,
             "revision_result": self.revision_result.to_dict() if self.revision_result else None,
-            "llm_response": self.llm_response.to_dict() if self.llm_response else None,
+            "model_draft": self.model_draft.to_dict() if self.model_draft else None,
             "cost": self.cost.to_dict() if self.cost else None,
         }
 
 
 class MitigationController:
-    """Main routing and execution controller."""
+    """Main routing and execution controller with Phase 2 LLM Integration."""
 
     def __init__(
         self,
         retriever: Optional[LocalCorpusRetriever] = None,
-        llm_provider: Optional[BaseLLMProvider] = None,
+        model_adapter: Optional[BaseModelAdapter] = None,
         logger: Optional[LoggingService] = None,
         tradeoff_lambda: float = 0.5,
+        default_generation_settings: Optional[GenerationSettings] = None,
     ):
         self.retriever = retriever or LocalCorpusRetriever()
-        self.llm_provider = llm_provider or get_llm_provider()
+        self.model_adapter = model_adapter or get_model_adapter()
         self.logger = logger or get_logging_service()
         self.tradeoff_lambda = tradeoff_lambda
+        self.default_generation_settings = default_generation_settings or GenerationSettings()
 
         # Policy registry
         self.policies: Dict[str, BasePolicy] = {
@@ -98,6 +105,7 @@ class MitigationController:
         tradeoff_lambda: Optional[float] = None,
         reference_answer: Optional[str] = None,
         benchmark_category: Optional[str] = None,
+        generation_settings: Optional[GenerationSettings] = None,
     ) -> ExecutionResult:
         """Process a query through the adaptive mitigation controller."""
         start_time_perf = time.perf_counter()
@@ -107,6 +115,7 @@ class MitigationController:
         lambda_val = tradeoff_lambda if tradeoff_lambda is not None else self.tradeoff_lambda
         selected_policy_name = policy_name or PolicyType.ADAPTIVE.value
         policy = self.policies.get(selected_policy_name, self.policies[PolicyType.ADAPTIVE.value])
+        gen_cfg = generation_settings or self.default_generation_settings
 
         # Step 1: Feature & Uncertainty Signal Extraction
         signals = SignalExtractor.extract(query)
@@ -120,13 +129,14 @@ class MitigationController:
         completion_tokens = 0
         model_calls = 0
         tool_calls = 0
-        is_billed = not getattr(self.llm_provider, "is_mock", True)
+        is_billed = not getattr(self.model_adapter, "is_mock", True)
+        tool_errors: Optional[str] = None
 
         calc_res: Optional[CalculationResult] = None
         ret_res: Optional[RetrievalResult] = None
         ver_res: Optional[VerificationResult] = None
         rev_res: Optional[RevisionResult] = None
-        llm_resp: Optional[LLMResponse] = None
+        draft: Optional[ModelDraft] = None
         final_answer = ""
 
         # Step 3: Action Execution
@@ -138,6 +148,7 @@ class MitigationController:
                 final_answer = f"Calculation Result: {calc_res.expression} = {calc_res.formatted_result}"
             else:
                 final_answer = f"Calculator could not compute expression: {calc_res.error}"
+                tool_errors = calc_res.error
             # No verification performed for deterministic calculator
             ver_res = VerificationResult(
                 overall_status=VerificationStatus.NOT_CHECKED,
@@ -177,25 +188,25 @@ class MitigationController:
             tool_calls += 1
             ret_res = self.retriever.retrieve(query, top_k=3)
 
-            # Generate grounded response using evidence
+            # Generate grounded draft using model adapter
             model_calls += 1
             evidence_context = ""
             if ret_res.passages and ret_res.has_sufficient_evidence:
                 evidence_context = "\n".join([f"[{p.doc_title}]: {p.text}" for p in ret_res.passages])
-                prompt = (
-                    f"Answer the following question using strictly the retrieved evidence below:\n\n"
-                    f"Evidence:\n{evidence_context}\n\n"
-                    f"Question: {query}\n\nAnswer:"
-                )
-            else:
-                prompt = f"Question: {query}\n\nAnswer:"
 
-            llm_resp = self.llm_provider.generate(prompt)
-            prompt_tokens += llm_resp.prompt_tokens
-            completion_tokens += llm_resp.completion_tokens
-            
+            draft = self.model_adapter.generate_draft(
+                query=query,
+                task_type="rag" if evidence_context else "direct",
+                evidence=evidence_context,
+                settings=gen_cfg
+            )
+            prompt_tokens += draft.prompt_tokens
+            completion_tokens += draft.completion_tokens
+            if draft.error:
+                tool_errors = draft.error
+
             if ret_res.has_sufficient_evidence:
-                final_answer = llm_resp.text
+                final_answer = draft.text
                 # Verification is NOT claimed simply because retrieval occurred
                 ver_res = VerificationResult(
                     overall_status=VerificationStatus.NOT_CHECKED,
@@ -203,7 +214,7 @@ class MitigationController:
                 )
             else:
                 final_answer = (
-                    f"{llm_resp.text}\n\n"
+                    f"{draft.text}\n\n"
                     f"[Notice: Local evidence corpus did not contain sufficient authoritative passages for this query.]"
                 )
                 ver_res = VerificationResult(
@@ -212,22 +223,27 @@ class MitigationController:
                 )
 
         elif action == "verify":
-            # Full mitigation pipeline: Retrieve -> Generate -> Verify claims against evidence -> Revise if needed
+            # Full mitigation pipeline: Retrieve -> Generate draft -> Verify claims against evidence -> Revise if needed
             tool_calls += 1  # retrieval
             ret_res = self.retriever.retrieve(query, top_k=3)
 
             # Generate draft
             model_calls += 1
+            evidence_context = ""
             if ret_res.has_sufficient_evidence:
                 evidence_context = "\n".join([f"[{p.doc_title}]: {p.text}" for p in ret_res.passages])
-                prompt = f"Evidence:\n{evidence_context}\n\nQuestion: {query}\n\nAnswer:"
-            else:
-                prompt = f"Question: {query}\n\nAnswer:"
 
-            llm_resp = self.llm_provider.generate(prompt)
-            prompt_tokens += llm_resp.prompt_tokens
-            completion_tokens += llm_resp.completion_tokens
-            draft_answer = llm_resp.text
+            draft = self.model_adapter.generate_draft(
+                query=query,
+                task_type="rag" if evidence_context else "direct",
+                evidence=evidence_context,
+                settings=gen_cfg
+            )
+            prompt_tokens += draft.prompt_tokens
+            completion_tokens += draft.completion_tokens
+            if draft.error:
+                tool_errors = draft.error
+            draft_answer = draft.text
 
             # Run claim-level verification
             tool_calls += 1  # verification tool
@@ -242,10 +258,16 @@ class MitigationController:
 
         else:  # "direct"
             model_calls += 1
-            llm_resp = self.llm_provider.generate(f"Question: {query}\n\nAnswer:")
-            prompt_tokens += llm_resp.prompt_tokens
-            completion_tokens += llm_resp.completion_tokens
-            final_answer = llm_resp.text
+            draft = self.model_adapter.generate_draft(
+                query=query,
+                task_type="direct",
+                settings=gen_cfg
+            )
+            prompt_tokens += draft.prompt_tokens
+            completion_tokens += draft.completion_tokens
+            if draft.error:
+                tool_errors = draft.error
+            final_answer = draft.text
             ver_res = VerificationResult(
                 overall_status=VerificationStatus.NOT_CHECKED,
                 summary_notes="Direct generation selected; verification pipeline not invoked."
@@ -260,7 +282,12 @@ class MitigationController:
             model_calls=model_calls,
             tool_calls=tool_calls,
             is_billed=is_billed,
-            notes={"policy": selected_policy_name, "lambda": lambda_val}
+            notes={
+                "policy": selected_policy_name,
+                "lambda": lambda_val,
+                "model_id": draft.model_id if draft else "local",
+                "prompt_version": draft.prompt_version if draft else "v1.0-standard"
+            }
         )
 
         # Build execution result
@@ -276,7 +303,7 @@ class MitigationController:
             retrieval_result=ret_res,
             verification_result=ver_res,
             revision_result=rev_res,
-            llm_response=llm_resp,
+            model_draft=draft,
             cost=cost_record,
         )
 
@@ -305,8 +332,8 @@ class MitigationController:
             verification_status=ver_status_str,
             supported_claims_count=ver_res.supported_claims_count if ver_res else 0,
             unsupported_claims_count=ver_res.unsupported_claims_count if ver_res else 0,
-            model_name=llm_resp.model_name if llm_resp else "local-rule",
-            is_mock_model=getattr(llm_resp, "is_mock", True) if llm_resp else True,
+            model_name=draft.model_id if draft else "local-rule",
+            is_mock_model=getattr(draft, "is_mock", True) if draft else True,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=prompt_tokens + completion_tokens,
@@ -318,6 +345,10 @@ class MitigationController:
             reference_answer=reference_answer,
             is_correct=is_corr,
             benchmark_category=benchmark_category,
+            prompt_version=draft.prompt_version if draft else "v1.0-standard",
+            generation_settings=draft.generation_settings if draft else {},
+            model_reported_confidence=draft.model_reported_confidence if draft else None,
+            tool_errors=tool_errors,
         )
         self.logger.log_run(log_record)
 

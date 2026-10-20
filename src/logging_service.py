@@ -13,7 +13,7 @@ import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Optional, Any
 import pandas as pd
 
@@ -50,6 +50,12 @@ class RunRecord:
     latency_ms: float
     estimated_cost_units: float
     measured_monetary_usd: float
+    
+    # Phase 2 Model & Prompt Tracking
+    prompt_version: str = "v1.0-standard"
+    generation_settings: Dict[str, Any] = field(default_factory=dict)
+    model_reported_confidence: Optional[float] = None
+    tool_errors: Optional[str] = None
     
     # Optional ground truth / benchmark fields
     reference_answer: Optional[str] = None
@@ -103,9 +109,23 @@ class LoggingService:
                     measured_monetary_usd REAL,
                     reference_answer TEXT,
                     is_correct INTEGER,
-                    benchmark_category TEXT
+                    benchmark_category TEXT,
+                    prompt_version TEXT,
+                    generation_settings TEXT,
+                    model_reported_confidence REAL,
+                    tool_errors TEXT
                 )
             """)
+            # Ensure columns exist if table was already created
+            existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+            for col, col_type in [
+                ("prompt_version", "TEXT"),
+                ("generation_settings", "TEXT"),
+                ("model_reported_confidence", "REAL"),
+                ("tool_errors", "TEXT"),
+            ]:
+                if col not in existing_cols:
+                    conn.execute(f"ALTER TABLE runs ADD COLUMN {col} {col_type}")
             conn.commit()
         finally:
             conn.close()
@@ -125,8 +145,9 @@ class LoggingService:
                     is_mock_model, prompt_tokens, completion_tokens, total_tokens,
                     model_calls_count, tool_calls_count, latency_ms,
                     estimated_cost_units, measured_monetary_usd, reference_answer,
-                    is_correct, benchmark_category
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    is_correct, benchmark_category, prompt_version,
+                    generation_settings, model_reported_confidence, tool_errors
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.run_id,
@@ -154,7 +175,11 @@ class LoggingService:
                     record.measured_monetary_usd,
                     record.reference_answer,
                     1 if record.is_correct is True else (0 if record.is_correct is False else None),
-                    record.benchmark_category
+                    record.benchmark_category,
+                    record.prompt_version,
+                    json.dumps(record.generation_settings),
+                    record.model_reported_confidence,
+                    record.tool_errors
                 )
             )
             conn.commit()

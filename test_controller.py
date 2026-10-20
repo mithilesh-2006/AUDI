@@ -12,6 +12,7 @@ from tests.test_retrieval import TestLocalCorpusRetriever
 from tests.test_verification_revision import TestVerificationAndRevision
 from tests.test_controller_routing import TestControllerRouting
 from tests.test_llm_provider import TestLLMProvider
+from tests.test_model_adapter import TestModelAdapterPhase2
 from tests.test_cost_accounting import TestCostAndLogging
 from tests.test_experiment_runner import TestExperimentRunner
 

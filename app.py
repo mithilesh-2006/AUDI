@@ -1,6 +1,6 @@
 """
 Adaptive, Cost-Aware Hallucination Mitigation for LLMs
-Research Prototype - Streamlit Web Dashboard
+Research Prototype - Streamlit Web Dashboard (Phase 2 LLM Integration)
 
 Provides:
 A. Interactive Query Evaluation & Main Dashboard
@@ -9,6 +9,7 @@ C. Evidence & Claim Verification Panel
 D. Cost, Latency & Token Accounting Panel
 E. Multi-Policy Research Benchmark & Comparative Analysis
 F. Local Corpus Knowledge Explorer & Document Ingestion
+G. Model Adapter, Prompt Versioning & Generation Settings (Phase 2)
 """
 
 from __future__ import annotations
@@ -27,7 +28,12 @@ from src.calculator import SafeCalculator
 from src.retrieval import LocalCorpusRetriever, RetrievedPassage
 from src.verification import EvidenceVerifier, VerificationStatus, ClaimStatus
 from src.revision import AnswerReviser
-from src.llm_provider import get_llm_provider, BaseLLMProvider
+from src.model_adapter import (
+    BaseModelAdapter,
+    ModelDraft,
+    GenerationSettings,
+    get_model_adapter,
+)
 from src.cost_tracker import CostTracker
 from src.logging_service import LoggingService, get_logging_service
 from src.policy import PolicyType, AdaptiveRulePolicy
@@ -98,16 +104,11 @@ st.markdown(
 
 
 @st.cache_resource
-def get_controller():
-    """Cache controller and local resources."""
-    return MitigationController()
-
-
-@st.cache_resource
-def get_runner():
-    """Cache experiment runner."""
-    ctrl = get_controller()
-    return ExperimentRunner(controller=ctrl)
+def get_base_resources():
+    """Cache controller and runner."""
+    retriever = LocalCorpusRetriever()
+    logger = get_logging_service()
+    return retriever, logger
 
 
 def format_action_badge(action: str) -> str:
@@ -117,9 +118,7 @@ def format_action_badge(action: str) -> str:
 
 
 def main():
-    controller = get_controller()
-    runner = get_runner()
-    logger = controller.logger
+    retriever, logger = get_base_resources()
 
     # Sidebar: Navigation & Configuration
     st.sidebar.title("Navigation & Policy")
@@ -144,13 +143,65 @@ def main():
         help="Controls the trade-off in: a* = argmax [Benefit(a) - λ * Cost(a)]. Higher values penalize costly verification/retrieval actions.",
     )
 
-    provider_info = type(controller.llm_provider).__name__
-    is_mock = getattr(controller.llm_provider, "is_mock", True)
-    st.sidebar.info(
-        f"**Active LLM Adapter:** `{provider_info}`\n\n"
-        f"**Mode:** {'Local Demonstration (Offline, $0)' if is_mock else 'Live Remote API'}\n\n"
-        f"Set `OPENAI_API_KEY` or `GEMINI_API_KEY` in `.env` for remote model calls."
+    # Sidebar: Phase 2 Model & Generation Configuration
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Phase 2: Model & Generation Settings")
+
+    provider_choice = st.sidebar.selectbox(
+        "LLM Provider Adapter:",
+        ["offline", "openai", "gemini", "ollama"],
+        index=0,
+        format_func=lambda x: {
+            "offline": "Local Offline ($0, No API Key)",
+            "openai": "OpenAI (Remote API)",
+            "gemini": "Google Gemini (Remote API)",
+            "ollama": "Ollama (Local Open-Weights)",
+        }[x],
+        help="Select the generation backend. Local offline mode works without any API keys.",
     )
+
+    default_models = {
+        "offline": "offline-rule-demonstrator",
+        "openai": "gpt-4o-mini",
+        "gemini": "gemini-1.5-flash",
+        "ollama": "llama3.2:3b",
+    }
+    model_id_val = st.sidebar.text_input(
+        "Model Identifier:",
+        value=default_models.get(provider_choice, "offline-rule-demonstrator")
+    )
+
+    prompt_version = st.sidebar.selectbox(
+        "Prompt Template Version:",
+        ["v1.0-standard", "v2.0-concise", "v1.1-with-confidence-elicitation"],
+        index=0,
+        help="Versioned prompt templates for draft generation."
+    )
+
+    with st.sidebar.expander("Hyperparameters & Decoding", expanded=False):
+        temperature_val = st.slider("Temperature", 0.0, 1.0, 0.2, 0.05)
+        top_p_val = st.slider("Top-P", 0.1, 1.0, 0.95, 0.05)
+        max_tokens_val = st.slider("Max Tokens", 50, 1500, 500, 50)
+        elicit_conf_val = st.checkbox("Elicit Self-Reported Confidence", value=("confidence" in prompt_version))
+
+    # Initialize model adapter with selected settings
+    adapter = get_model_adapter(provider_name=provider_choice, model_id=model_id_val)
+    gen_settings = GenerationSettings(
+        temperature=temperature_val,
+        top_p=top_p_val,
+        max_tokens=max_tokens_val,
+        prompt_version=prompt_version,
+        elicit_confidence=elicit_conf_val,
+    )
+
+    controller = MitigationController(
+        retriever=retriever,
+        model_adapter=adapter,
+        logger=logger,
+        tradeoff_lambda=tradeoff_lambda,
+        default_generation_settings=gen_settings,
+    )
+    runner = ExperimentRunner(controller=controller)
 
     # VIEW 1: Interactive Query Analyzer
     if app_mode == "🔬 Interactive Query Analyzer":
@@ -158,7 +209,7 @@ def main():
         st.markdown(
             '<div class="sub-header">'
             'A research prototype investigating selective hallucination mitigation: inspect query signals, '
-            'adaptively select actions, and evaluate the quality–cost trade-off.'
+            'adaptively select actions, generate drafts via pluggable model adapters, and evaluate the quality–cost trade-off.'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -176,6 +227,7 @@ def main():
                 "What is the elevation of Mount Everest according to the 2020 survey?",
                 "What is the exact speed of light in vacuum?",
                 "When did Apollo 11 land on the Moon?",
+                "Why did Albert Einstein win the Nobel Prize in Physics?",
                 "Will Bitcoin hit $500,000 in 2035?",
                 "What am I thinking right now?",
                 "Explain the general concept of photosynthesis in plants.",
@@ -223,11 +275,12 @@ def main():
             if analyze_clicked:
                 if not user_query.strip():
                     st.warning("Query is empty. The controller will evaluate an empty query signal.")
-                with st.spinner("Extracting signals and evaluating cost-aware policy..."):
+                with st.spinner("Extracting signals, selecting action, and invoking model adapter..."):
                     result = controller.process_query(
                         query=user_query,
                         policy_name=policy_choice,
                         tradeoff_lambda=tradeoff_lambda,
+                        generation_settings=gen_settings,
                     )
                     st.session_state["last_result"] = result
             else:
@@ -255,7 +308,7 @@ def main():
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # DETAIL PANELS: Tabs for clarity
+            # DETAIL PANELS
             tab_decision, tab_answer, tab_evidence, tab_cost = st.tabs([
                 "🧠 Decision Rationale",
                 "💬 Final Answer & Output",
@@ -305,6 +358,35 @@ def main():
             with tab_answer:
                 st.subheader("Response Output")
                 st.markdown(f'<div class="status-card">{result.final_answer}</div>', unsafe_allow_html=True)
+
+                # Phase 2 Model Draft & Confidence Metadata Inspector
+                if result.model_draft:
+                    with st.expander("🤖 Phase 2 Model Draft & Generation Metadata", expanded=True):
+                        d = result.model_draft
+                        col_d1, col_d2, col_d3 = st.columns(3)
+                        with col_d1:
+                            st.write(f"**Model ID:** `{d.model_id}`")
+                            st.write(f"**Provider:** `{d.provider}`")
+                            st.write(f"**Prompt Version:** `{d.prompt_version}`")
+                        with col_d2:
+                            st.write(f"**Prompt Tokens:** `{d.prompt_tokens}`")
+                            st.write(f"**Completion Tokens:** `{d.completion_tokens}`")
+                            st.write(f"**Total Tokens:** `{d.total_tokens}`")
+                        with col_d3:
+                            st.write(f"**Temperature:** `{d.generation_settings.get('temperature', 0.2)}`")
+                            st.write(f"**Max Tokens:** `{d.generation_settings.get('max_tokens', 500)}`")
+                            st.write(f"**Latency:** `{d.latency_ms:.1f} ms`")
+
+                        if d.model_reported_confidence is not None:
+                            st.markdown(
+                                f"**Model Self-Reported Confidence:** `{d.model_reported_confidence:.2f}` (scale 0.0 - 1.0)"
+                            )
+                            st.caption(
+                                "⚠️ *Safety Notice:* Model-reported confidence is treated strictly as an uncalibrated experimental feature to analyze, NOT as ground-truth correctness."
+                            )
+
+                        if d.error:
+                            st.error(f"Model Error: {d.error}")
 
                 if result.revision_result and result.revision_result.is_revised:
                     st.warning("⚠️ **Answer Revision Applied:** Unsupported claims were identified and modified.")
@@ -444,7 +526,6 @@ def main():
             unsafe_allow_html=True,
         )
 
-        retriever = controller.retriever
         st.write(f"Total Indexed Documents: **{len(retriever.documents)}** | Total Passages: **{len(retriever.passages)}**")
 
         tab_list, tab_add = st.tabs(["📖 View Existing Documents", "➕ Add Document"])
@@ -489,10 +570,10 @@ def main():
 
         if recent_runs:
             df_runs = pd.DataFrame(recent_runs)
-            # Display clean view
             disp_cols = [
-                "timestamp", "query", "policy_name", "selected_action",
-                "heuristic_uncertainty", "verification_status", "latency_ms", "total_tokens", "monetary_cost_usd"
+                "timestamp", "query", "policy_name", "selected_action", "model_name",
+                "prompt_version", "model_reported_confidence", "heuristic_uncertainty",
+                "verification_status", "latency_ms", "total_tokens", "monetary_cost_usd"
             ]
             available_cols = [c for c in disp_cols if c in df_runs.columns]
             st.dataframe(df_runs[available_cols], use_container_width=True)
