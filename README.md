@@ -1,7 +1,7 @@
 # Adaptive, Cost-Aware Hallucination Mitigation for Large Language Models
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Tests Passing](https://img.shields.io/badge/tests-54%20passed-brightgreen.svg)](test_controller.py)
+[![Tests Passing](https://img.shields.io/badge/tests-61%20passed-brightgreen.svg)](test_controller.py)
 [![UI: Streamlit](https://img.shields.io/badge/UI-Streamlit-red.svg)](app.py)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -71,13 +71,13 @@ Where:
 
 | Action | Handler | Implementation Details | Purpose | Cost Unit |
 |---|---|---|---|---|
-| **Direct** | `src/model_adapter.py` | ✅ Fully Working | Unassisted draft generation via pluggable adapters (Offline, OpenAI, Gemini, Ollama) | 1.0 |
-| **Calculate** | `src/calculator.py` | ✅ Fully Working | Sandboxed AST evaluator for deterministic arithmetic (rejects unsafe code / DoS) | 0.2 |
-| **Retrieve** | `src/retrieval.py` | ✅ Fully Working | BM25 lexical passage matching over local verified corpus with score gating | 3.5 |
-| **Clarify** | `src/clarification.py` | ✅ Fully Working | Formulates structured clarification queries and resolves multi-turn disambiguation | 1.5 |
-| **Verify** | `src/verification.py` | ✅ Fully Working | Decomposes answers into claims, checks numerical/entity contradictions, and attributes verbatim quotes (`SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`) | 5.0 |
-| **Revise** | `src/revision.py` | ✅ Fully Working | Redacts/hedges unsupported claims and runs a post-revision re-verification loop | 6.5 |
-| **Abstain** | `src/controller.py` | ✅ Fully Working | Refuses to guess on speculative future events, unknowable private states, or insufficient evidence | 0.4 |
+| **Direct** | `src/model_adapter.py` | Operational | Unassisted draft generation via pluggable adapters (Offline, OpenAI, Gemini, Ollama) | 1.0 |
+| **Calculate** | `src/calculator.py` | Operational | Sandboxed AST evaluator for deterministic arithmetic (rejects unsafe code / DoS) | 0.2 |
+| **Retrieve** | `src/retrieval.py` | Operational | BM25 lexical passage matching over local verified corpus with score gating | 3.5 |
+| **Clarify** | `src/clarification.py` | Operational | Formulates structured clarification queries and resolves multi-turn disambiguation | 1.5 |
+| **Verify** | `src/verification.py` | Operational | Decomposes answers into claims, checks numerical/entity contradictions, and attributes verbatim quotes (`SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`) | 5.0 |
+| **Revise** | `src/revision.py` | Operational | Redacts/hedges unsupported claims and runs a post-revision re-verification loop | 6.5 |
+| **Abstain** | `src/controller.py` | Operational | Refuses to guess on speculative future events, unknowable private states, or insufficient evidence | 0.4 |
 
 > **Crucial Rule:** The system **only** marks claims `Verified` when an actual evidence-based verification procedure has successfully completed. Retrieval alone is **not** verification.
 
@@ -86,16 +86,19 @@ Where:
 ## 4. Technology Stack
 
 - **Language:** Python 3.10+
-- **Frontend Dashboard:** Streamlit (`app.py`) with interactive clarification dialogue and contradiction inspectors
+- **Frontend Dashboard:** Streamlit (`app.py`) with clean white minimalist theme (zero emojis)
 - **Backend Core:** Modular Python services (`src/`)
 - **Arithmetic Safety:** Python `ast` Visitor (zero `eval()`)
 - **Retrieval Engine:** Lexical BM25 passage matching with threshold gating (`src/retrieval.py`)
 - **Clarification:** Structured clarification engine and multi-turn state resolution (`src/clarification.py`)
 - **Verification:** Propositional claim decomposition with contradiction detection and verbatim quote attribution (`src/verification.py`)
 - **Revision:** Automated hedging/redaction with post-revision re-verification loop (`src/revision.py`)
+- **Uncertainty Estimation:** Multi-sample semantic disagreement, Jaccard distance, and token entropy (`src/uncertainty.py`)
+- **Calibration Engine:** Expected Calibration Error (ECE), Brier score, temperature scaling, and zero-leakage dataset partitioner (`src/calibration.py`)
+- **Cost-Sensitive Decision Policy:** Calibrated quality loss vs cost penalty optimization (`src/policy.py`)
 - **LLM Integration:** Pluggable adapter (`OfflineLocalAdapter`, `OpenAIAdapter`, `GeminiAdapter`, `OllamaAdapter`) with prompt versioning
 - **Experiment Storage:** SQLite (`results/experiments.db`) and JSONL (`results/logs/runs.jsonl`)
-- **Test Framework:** Python `unittest` (54 tests passing)
+- **Test Framework:** Python `unittest` (61 tests passing)
 
 ---
 

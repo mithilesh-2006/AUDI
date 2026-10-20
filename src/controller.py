@@ -29,7 +29,10 @@ from src.policy import (
     DirectOnlyPolicy,
     AlwaysRetrievePolicy,
     FixedVerifyPolicy,
+    LearnedCostAwarePolicy,
 )
+from src.uncertainty import UncertaintyEstimator, CompositeUncertaintyResult
+from src.calibration import CalibrationEngine
 from src.calculator import SafeCalculator, CalculationResult
 from src.retrieval import LocalCorpusRetriever, RetrievalResult, RetrievedPassage
 from src.verification import EvidenceVerifier, VerificationResult, VerificationStatus
@@ -56,7 +59,7 @@ class ExecutionResult:
     final_answer: str
     action_executed: str
     
-    # Sub-component execution results (Phase 3)
+    # Sub-component execution results (Phase 3 & 4)
     calculation_result: Optional[CalculationResult] = None
     retrieval_result: Optional[RetrievalResult] = None
     verification_result: Optional[VerificationResult] = None
@@ -64,6 +67,7 @@ class ExecutionResult:
     clarification_session: Optional[ClarificationSession] = None
     model_draft: Optional[ModelDraft] = None
     cost: Optional[CostAccounting] = None
+    uncertainty_result: Optional[CompositeUncertaintyResult] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -81,11 +85,12 @@ class ExecutionResult:
             "clarification_session": self.clarification_session.to_dict() if self.clarification_session else None,
             "model_draft": self.model_draft.to_dict() if self.model_draft else None,
             "cost": self.cost.to_dict() if self.cost else None,
+            "uncertainty_result": self.uncertainty_result.to_dict() if self.uncertainty_result else None,
         }
 
 
 class MitigationController:
-    """Main routing and execution controller with Phase 3 Mitigation Tools."""
+    """Main routing and execution controller with Phase 3 Mitigation Tools and Phase 4 Calibration."""
 
     def __init__(
         self,
@@ -94,16 +99,21 @@ class MitigationController:
         logger: Optional[LoggingService] = None,
         tradeoff_lambda: float = 0.5,
         default_generation_settings: Optional[GenerationSettings] = None,
+        uncertainty_estimator: Optional[UncertaintyEstimator] = None,
+        calibrator: Optional[CalibrationEngine] = None,
     ):
         self.retriever = retriever or LocalCorpusRetriever()
         self.model_adapter = model_adapter or get_model_adapter()
         self.logger = logger or get_logging_service()
         self.tradeoff_lambda = tradeoff_lambda
         self.default_generation_settings = default_generation_settings or GenerationSettings()
+        self.uncertainty_estimator = uncertainty_estimator or UncertaintyEstimator(retriever=self.retriever)
+        self.calibrator = calibrator or CalibrationEngine()
 
         # Policy registry
         self.policies: Dict[str, BasePolicy] = {
             PolicyType.ADAPTIVE.value: AdaptiveRulePolicy(default_lambda=tradeoff_lambda),
+            PolicyType.LEARNED_COST_AWARE.value: LearnedCostAwarePolicy(default_lambda=tradeoff_lambda),
             PolicyType.DIRECT_ONLY.value: DirectOnlyPolicy(),
             PolicyType.ALWAYS_RETRIEVE.value: AlwaysRetrievePolicy(),
             PolicyType.FIXED_VERIFY.value: FixedVerifyPolicy(),
@@ -130,9 +140,14 @@ class MitigationController:
 
         # Step 1: Feature & Uncertainty Signal Extraction
         signals = SignalExtractor.extract(query)
+        uncertainty_res = self.uncertainty_estimator.estimate_uncertainty(query=query, signals=signals)
+        calibrated_u = self.calibrator.calibrate_probability(uncertainty_res.composite_uncertainty)
 
         # Step 2: Policy Action Selection
-        decision = policy.select_action(signals, tradeoff_lambda=lambda_val)
+        if isinstance(policy, LearnedCostAwarePolicy):
+            decision = policy.select_action(signals, tradeoff_lambda=lambda_val, calibrated_uncertainty=calibrated_u)
+        else:
+            decision = policy.select_action(signals, tradeoff_lambda=lambda_val)
         action = decision.selected_action
 
         # Resource counters
@@ -327,6 +342,7 @@ class MitigationController:
             clarification_session=clarify_session,
             model_draft=draft,
             cost=cost_record,
+            uncertainty_result=uncertainty_res,
         )
 
         # Step 5: Persistent Logging

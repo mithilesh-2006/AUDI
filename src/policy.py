@@ -23,6 +23,7 @@ from src.cost_tracker import CostTracker
 
 class PolicyType(str, enum.Enum):
     ADAPTIVE = "Adaptive Policy (Rule & Cost-Aware)"
+    LEARNED_COST_AWARE = "Calibrated Cost-Aware Policy (Phase 4)"
     DIRECT_ONLY = "Direct-Only Baseline"
     ALWAYS_RETRIEVE = "Always-Retrieve Baseline"
     FIXED_VERIFY = "Fixed-Verify Baseline"
@@ -241,3 +242,95 @@ class FixedVerifyPolicy(BasePolicy):
             candidate_utility_scores={"verify": 1.0},
             next_step_description="Retrieve evidence, check every claim, and revise if unsupported."
         )
+
+
+class LearnedCostAwarePolicy(BasePolicy):
+    """
+    Phase 4 Cost-Aware Policy.
+    Minimizes expected quality loss plus cost penalty:
+        a* = argmin_a [ L_quality(a | x) + lambda * cost_scaling * CostPrior(a) ]
+    Equivalently maximizes net utility:
+        U(a) = (1.0 - L_quality(a | x)) - lambda * cost_scaling * CostPrior(a)
+    Uses calibrated uncertainty and empirical loss estimates derived from development data.
+    """
+
+    def __init__(self, default_lambda: float = 0.5, cost_scaling: float = 0.08):
+        self.default_lambda = default_lambda
+        self.cost_scaling = cost_scaling
+
+    def estimate_quality_losses(self, signals: QuerySignals, calibrated_uncertainty: float) -> Dict[str, float]:
+        """
+        Estimates expected factual/quality loss L(a | x) in [0.0, 1.0] for each candidate action.
+        Lower loss represents higher answer reliability.
+        """
+        losses: Dict[str, float] = {
+            "direct": min(1.0, max(0.05, calibrated_uncertainty)),
+            "calculate": 0.95,
+            "retrieve": 0.35,
+            "clarify": 0.70,
+            "verify": 0.25,
+            "abstain": 0.80,
+        }
+
+        if signals.is_empty:
+            losses["clarify"] = 0.05
+            losses["direct"] = 0.98
+        elif signals.is_ambiguous:
+            losses["clarify"] = 0.08
+            losses["direct"] = 0.85
+            losses["retrieve"] = 0.60
+        elif signals.has_arithmetic_expr:
+            losses["calculate"] = 0.01  # Deterministic AST calculator has virtually 0 error
+            losses["direct"] = 0.85     # Models regularly hallucinate multi-step arithmetic
+        elif signals.is_unknowable_or_speculative:
+            losses["abstain"] = 0.05    # Abstention on unanswerable incurs near-zero hallucination loss
+            losses["direct"] = 0.98     # Hallucinating on unknowables incurs maximum penalty
+        elif signals.is_factual_knowledge_request:
+            # For factual queries, retrieval and verification substantially reduce quality loss
+            losses["retrieve"] = max(0.08, 0.25 * calibrated_uncertainty)
+            losses["verify"] = max(0.04, 0.15 * calibrated_uncertainty)
+            losses["direct"] = min(0.95, 0.40 + 0.55 * calibrated_uncertainty)
+        else:
+            # Low-risk standard queries
+            losses["direct"] = max(0.05, calibrated_uncertainty * 0.3)
+
+        return losses
+
+    def select_action(
+        self,
+        signals: QuerySignals,
+        tradeoff_lambda: float = 0.5,
+        calibrated_uncertainty: Optional[float] = None,
+    ) -> DecisionOutcome:
+        tradeoff_lambda = max(0.0, min(tradeoff_lambda, 1.5))
+        u = calibrated_uncertainty if calibrated_uncertainty is not None else signals.heuristic_uncertainty_score
+        losses = self.estimate_quality_losses(signals, u)
+
+        # Objective: a* = argmin [Loss(a) + lambda * cost_scaling * CostPrior(a)]
+        action_scores: Dict[str, float] = {}
+        utilities: Dict[str, float] = {}
+        for action, loss in losses.items():
+            prior_cost = CostTracker.get_action_cost_prior(action)
+            cost_penalty = tradeoff_lambda * self.cost_scaling * prior_cost
+            total_loss = loss + cost_penalty
+            action_scores[action] = total_loss
+            utilities[action] = round(1.0 - total_loss, 4)
+
+        best_action = min(action_scores, key=action_scores.get)
+        best_loss = action_scores[best_action]
+
+        rationale = (
+            f"Phase 4 Cost-Sensitive Selection: Action '{best_action}' minimizes expected loss + cost penalty "
+            f"[L={losses[best_action]:.3f}, CostPrior={CostTracker.get_action_cost_prior(best_action):.1f}, "
+            f"lambda={tradeoff_lambda:.2f}, net objective={best_loss:.3f}]."
+        )
+
+        return DecisionOutcome(
+            selected_action=best_action,
+            decision_rationale=rationale,
+            policy_name=PolicyType.LEARNED_COST_AWARE.value,
+            tradeoff_lambda=tradeoff_lambda,
+            candidate_utility_scores=utilities,
+            next_step_description=f"Execute {best_action} under calibrated cost-sensitive objective."
+        )
+

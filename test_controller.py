@@ -16,6 +16,7 @@ from tests.test_model_adapter import TestModelAdapterPhase2
 from tests.test_actions import TestMitigationToolsPhase3
 from tests.test_cost_accounting import TestCostAndLogging
 from tests.test_experiment_runner import TestExperimentRunner
+from tests.test_calibration_policy import TestCalibrationAndLearnedPolicyPhase4
 
 
 if __name__ == "__main__":

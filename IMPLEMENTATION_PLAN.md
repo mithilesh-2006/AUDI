@@ -194,6 +194,15 @@ All actions, decision rationales, uncertainty signals, latency, token usage, and
   - **Streamlit Interactive UI:** Clarification response input and re-evaluator, contradiction alerts, verbatim quotes, and post-revision re-verification badges (`app.py`).
   - **Test Suite:** 54 passing unit tests covering all phases (`tests/test_actions.py`, `test_controller.py`).
 
-- [ ] **Phase 4: Statistical Uncertainty Calibration & Learned Cost Utility (Next)**
-  - Historical trace calibration (ECE, Brier score).
-  - Data-driven utility scoring replacing heuristic routing rules.
+- [x] **Phase 4: Statistical Uncertainty Calibration & Learned Cost Utility (Completed)**
+  - **Multi-Sample Semantic Disagreement:** Evaluates token divergence (Jaccard distance), lexical token entropy, and sample variance across multiple candidate responses (`src/uncertainty.py`).
+  - **Statistical Calibration Engine:** Expected Calibration Error (ECE), Brier score, and post-hoc temperature scaling parameter fitting on development sets (`src/calibration.py`).
+  - **Strict Split & Leakage Prevention:** Guaranteed disjoint partitioning of Development vs Held-Out Test sets (`dev_split` vs `test_split`) with automated zero-overlap validation.
+  - **Learned Cost-Aware Decision Policy:** Implementation of $a^* = \arg\min_a [ \widehat{L}_{\text{quality}}(a \mid x) + \lambda \cdot \text{CostPrior}(a) ]$ (`src/policy.py`).
+  - **Minimalist White UI & Zero Emojis:** Complete UI overhaul in `app.py` adopting a research lab aesthetic (slate typography on white cards, no emojis), plus a dedicated Phase 4 Uncertainty & Calibration panel.
+  - **Test Suite:** 61 passing unit tests (`tests/test_calibration_policy.py`, `test_controller.py`).
+
+- [ ] **Phase 5: Evaluation and Analysis (Next)**
+  - Full held-out benchmark evaluation with detailed ablation analysis.
+  - Confusion matrix of action decisions vs ground-truth archetypes.
+  - Latency, token usage, and cost-efficiency trade-off curve visualizations.

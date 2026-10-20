@@ -1,6 +1,6 @@
 """
 Adaptive, Cost-Aware Hallucination Mitigation for LLMs
-Research Prototype - Streamlit Web Dashboard (Phase 3 Mitigation Tools)
+Research Prototype - Streamlit Web Dashboard (Phase 4 Calibration & Cost Policy)
 
 Provides:
 A. Interactive Query Evaluation & Main Dashboard
@@ -8,8 +8,9 @@ B. Action Decision & Rationale Inspector
 C. Evidence & Claim Verification Panel
 D. Cost, Latency & Token Accounting Panel
 E. Multi-Policy Research Benchmark & Comparative Analysis
-F. Local Corpus Knowledge Explorer & Document Ingestion
-G. Model Adapter, Prompt Versioning & Generation Settings (Phase 2)
+F. Statistical Uncertainty Estimation & Calibration Inspector (Phase 4)
+G. Local Corpus Knowledge Explorer & Document Ingestion
+H. Model Adapter, Prompt Versioning & Generation Settings
 """
 
 from __future__ import annotations
@@ -28,6 +29,8 @@ from src.calculator import SafeCalculator
 from src.retrieval import LocalCorpusRetriever, RetrievedPassage
 from src.verification import EvidenceVerifier, VerificationStatus, ClaimStatus
 from src.revision import AnswerReviser
+from src.uncertainty import UncertaintyEstimator, DisagreementAnalysis
+from src.calibration import CalibrationEngine, split_dev_and_test
 from src.model_adapter import (
     BaseModelAdapter,
     ModelDraft,
@@ -36,66 +39,93 @@ from src.model_adapter import (
 )
 from src.cost_tracker import CostTracker
 from src.logging_service import LoggingService, get_logging_service
-from src.policy import PolicyType, AdaptiveRulePolicy
+from src.policy import (
+    PolicyType,
+    AdaptiveRulePolicy,
+    LearnedCostAwarePolicy,
+)
 from src.controller import MitigationController, ExecutionResult
 from src.experiment_runner import ExperimentRunner
 
 
-# Set Page Configuration
+# Set Page Configuration (Crisp, clean, no emojis)
 st.set_page_config(
     page_title="Adaptive Hallucination Mitigation | Research Prototype",
-    page_icon="⚖️",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Custom Styling for Research Aesthetics
+# Custom White Minimalist Styling for Research Paper Demo Aesthetics
 st.markdown(
     """
     <style>
+    /* Clean White Minimalist Theme */
+    body {
+        background-color: #ffffff;
+        color: #0f172a;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .stApp {
+        background-color: #ffffff;
+    }
     .main-header {
-        font-size: 2.1rem;
+        font-size: 1.85rem;
         font-weight: 700;
-        color: #1e293b;
+        color: #0f172a;
         margin-bottom: 0.2rem;
+        letter-spacing: -0.02em;
     }
     .sub-header {
-        font-size: 1.05rem;
+        font-size: 0.95rem;
         color: #475569;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.25rem;
+        line-height: 1.5;
     }
     .badge-action {
         display: inline-block;
-        padding: 0.35rem 0.8rem;
-        border-radius: 6px;
-        font-weight: 700;
-        font-size: 0.95rem;
-        letter-spacing: 0.05em;
+        padding: 0.25rem 0.65rem;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        letter-spacing: 0.04em;
         text-transform: uppercase;
     }
-    .action-direct { background-color: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; }
-    .action-calculate { background-color: #ecfdf5; color: #047857; border: 1px solid #6ee7b7; }
-    .action-retrieve { background-color: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
-    .action-clarify { background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }
-    .action-abstain { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
-    .action-verify { background-color: #ccfbf1; color: #0f766e; border: 1px solid #5eead4; }
+    .action-direct { background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .action-calculate { background-color: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+    .action-retrieve { background-color: #fefce8; color: #a16207; border: 1px solid #fef08a; }
+    .action-clarify { background-color: #faf5ff; color: #7e22ce; border: 1px solid #e9d5ff; }
+    .action-abstain { background-color: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .action-verify { background-color: #f0fdfa; color: #0f766e; border: 1px solid #99f6e4; }
+    .action-revise { background-color: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
     .status-card {
-        padding: 1rem;
-        border-radius: 8px;
-        background-color: #f8fafc;
+        padding: 1rem 1.25rem;
+        border-radius: 6px;
+        background-color: #ffffff;
         border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.03);
         margin-bottom: 1rem;
+        font-size: 0.95rem;
+        color: #1e293b;
     }
     .metric-label-clean {
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         color: #64748b;
         font-weight: 600;
         text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
     .metric-value-clean {
         font-size: 1.35rem;
         font-weight: 700;
         color: #0f172a;
+    }
+    .section-card {
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 1rem;
+        margin-bottom: 1rem;
     }
     </style>
     """,
@@ -125,27 +155,28 @@ def main():
     app_mode = st.sidebar.radio(
         "Select Workspace View:",
         [
-            "🔬 Interactive Query Analyzer",
-            "📊 Multi-Policy Benchmark Suite",
-            "📚 Local Knowledge Corpus",
-            "📜 Experiment Logs & Export",
+            "Interactive Query Analyzer",
+            "Multi-Policy Benchmark Suite",
+            "Statistical Uncertainty & Calibration",
+            "Local Knowledge Corpus",
+            "Experiment Logs & Export",
         ],
     )
 
     st.sidebar.markdown("---")
     st.sidebar.subheader("Policy Configuration")
     tradeoff_lambda = st.sidebar.slider(
-        "Cost Penalty Factor (λ)",
+        "Cost Penalty Factor (lambda)",
         min_value=0.0,
         max_value=1.5,
         value=0.5,
         step=0.05,
-        help="Controls the trade-off in: a* = argmax [Benefit(a) - λ * Cost(a)]. Higher values penalize costly verification/retrieval actions.",
+        help="Controls the trade-off in: a* = argmax [Benefit(a) - lambda * Cost(a)]. Higher values penalize costly verification/retrieval actions.",
     )
 
-    # Sidebar: Phase 2 Model & Generation Configuration
+    # Sidebar: Model & Generation Configuration
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Phase 2: Model & Generation Settings")
+    st.sidebar.subheader("Model & Generation Settings")
 
     provider_choice = st.sidebar.selectbox(
         "LLM Provider Adapter:",
@@ -204,12 +235,12 @@ def main():
     runner = ExperimentRunner(controller=controller)
 
     # VIEW 1: Interactive Query Analyzer
-    if app_mode == "🔬 Interactive Query Analyzer":
+    if app_mode == "Interactive Query Analyzer":
         st.markdown('<div class="main-header">Adaptive, Cost-Aware Hallucination Mitigation</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="sub-header">'
             'A research prototype investigating selective hallucination mitigation: inspect query signals, '
-            'adaptively select actions, generate drafts via pluggable model adapters, and evaluate the quality–cost trade-off.'
+            'estimate calibrated statistical uncertainty, adaptively route actions, and evaluate the quality-cost trade-off.'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -244,12 +275,13 @@ def main():
 
             col_btn, col_pol = st.columns([1, 1.5])
             with col_btn:
-                analyze_clicked = st.button("🚀 Analyze & Execute", type="primary", use_container_width=True)
+                analyze_clicked = st.button("Analyze and Execute", type="primary", use_container_width=True)
             with col_pol:
                 policy_choice = st.selectbox(
                     "Active Decision Policy:",
                     [
                         PolicyType.ADAPTIVE.value,
+                        PolicyType.LEARNED_COST_AWARE.value,
                         PolicyType.DIRECT_ONLY.value,
                         PolicyType.ALWAYS_RETRIEVE.value,
                         PolicyType.FIXED_VERIFY.value,
@@ -275,7 +307,7 @@ def main():
             if analyze_clicked:
                 if not user_query.strip():
                     st.warning("Query is empty. The controller will evaluate an empty query signal.")
-                with st.spinner("Extracting signals, selecting action, and invoking model adapter..."):
+                with st.spinner("Extracting signals, estimating uncertainty, and executing action..."):
                     result = controller.process_query(
                         query=user_query,
                         policy_name=policy_choice,
@@ -294,8 +326,11 @@ def main():
                 st.markdown('<div class="metric-label-clean">Selected Action</div>', unsafe_allow_html=True)
                 st.markdown(format_action_badge(result.action_executed), unsafe_allow_html=True)
             with c_unc:
-                st.markdown('<div class="metric-label-clean">Heuristic Uncertainty</div>', unsafe_allow_html=True)
-                unc_score = result.signals.heuristic_uncertainty_score
+                st.markdown('<div class="metric-label-clean">Estimated Uncertainty</div>', unsafe_allow_html=True)
+                if result.uncertainty_result:
+                    unc_score = result.uncertainty_result.composite_uncertainty
+                else:
+                    unc_score = result.signals.heuristic_uncertainty_score
                 st.markdown(f'<div class="metric-value-clean">{unc_score:.2f} <small style="font-size:0.8rem;color:#64748b;">(0.0-1.0)</small></div>', unsafe_allow_html=True)
             with c_ver:
                 st.markdown('<div class="metric-label-clean">Verification Status</div>', unsafe_allow_html=True)
@@ -310,10 +345,10 @@ def main():
 
             # DETAIL PANELS
             tab_decision, tab_answer, tab_evidence, tab_cost = st.tabs([
-                "🧠 Decision Rationale",
-                "💬 Final Answer & Output",
-                "📑 Evidence & Claims Alignment",
-                "📈 Cost & Resource Accounting",
+                "Decision Rationale",
+                "Final Answer and Output",
+                "Evidence and Claims Alignment",
+                "Cost and Resource Accounting",
             ])
 
             with tab_decision:
@@ -342,7 +377,7 @@ def main():
                     st.write(f"- **Token Length Approx:** `{result.signals.token_count_approx}`")
 
                 if result.decision.candidate_utility_scores:
-                    st.markdown("#### Cost-Aware Action Utilities: $U(a) = \\text{Benefit}(a) - \\lambda \\cdot \\text{Cost}(a)$")
+                    st.markdown("#### Action Net Utilities: U(a) = (1 - Loss(a)) - lambda * Cost(a)")
                     util_df = pd.DataFrame(
                         [
                             {
@@ -359,12 +394,12 @@ def main():
                 st.subheader("Response Output")
                 st.markdown(f'<div class="status-card">{result.final_answer}</div>', unsafe_allow_html=True)
 
-                # Phase 3 Interactive Multi-Turn Clarification Dialogue
-                if result.action_executed == "clarify" or result.clarification_request:
-                    st.info("💡 **Interactive Clarification Dialogue:** The controller detected ambiguity or missing criteria.")
+                # Interactive Multi-Turn Clarification Dialogue
+                if result.action_executed == "clarify" or result.clarification_session:
+                    st.info("Interactive Clarification Dialogue: The controller detected ambiguity or missing criteria.")
                     st.markdown("Please supply the missing criteria or context to complete this query turn:")
                     clarif_input = st.text_input("Clarification Input:", key="clarif_user_input", placeholder="e.g., Which language has better libraries for data science, Python or JavaScript?")
-                    if st.button("Submit Clarification & Resolve", key="btn_clarif_submit"):
+                    if st.button("Submit Clarification and Resolve", key="btn_clarif_submit"):
                         if clarif_input.strip():
                             with st.spinner("Resolving multi-turn clarification turn..."):
                                 resolved_res = controller.resolve_clarification_turn(
@@ -379,9 +414,9 @@ def main():
                         else:
                             st.warning("Please provide clarification details before submitting.")
 
-                # Phase 2 Model Draft & Confidence Metadata Inspector
+                # Model Draft & Confidence Metadata Inspector
                 if result.model_draft:
-                    with st.expander("🤖 Phase 2 Model Draft & Generation Metadata", expanded=True):
+                    with st.expander("Model Draft and Generation Metadata", expanded=True):
                         d = result.model_draft
                         col_d1, col_d2, col_d3 = st.columns(3)
                         with col_d1:
@@ -402,14 +437,14 @@ def main():
                                 f"**Model Self-Reported Confidence:** `{d.model_reported_confidence:.2f}` (scale 0.0 - 1.0)"
                             )
                             st.caption(
-                                "⚠️ *Safety Notice:* Model-reported confidence is treated strictly as an uncalibrated experimental feature to analyze, NOT as ground-truth correctness."
+                                "Safety Notice: Model-reported confidence is treated strictly as an uncalibrated experimental feature to analyze, NOT as ground-truth correctness."
                             )
 
                         if d.error:
                             st.error(f"Model Error: {d.error}")
 
                 if result.revision_result and result.revision_result.is_revised:
-                    st.warning("⚠️ **Answer Revision Applied:** Unsupported claims were identified and modified.")
+                    st.warning("Answer Revision Applied: Unsupported claims were identified and modified.")
                     with st.expander("Compare Original Draft vs Revised Output"):
                         c_orig, c_rev = st.columns(2)
                         with c_orig:
@@ -423,7 +458,7 @@ def main():
                             st.markdown(f"- {m}")
 
             with tab_evidence:
-                st.subheader("Evidence Retrieval & Verification Alignment")
+                st.subheader("Evidence Retrieval and Verification Alignment")
                 if result.action_executed in ("retrieve", "verify") and result.retrieval_result:
                     ret = result.retrieval_result
                     st.markdown(f"**Retrieval Status:** {ret.message}")
@@ -441,7 +476,7 @@ def main():
                     if result.verification_result and result.verification_result.claims:
                         contradictions = [c for c in result.verification_result.claims if c.status == ClaimStatus.CONTRADICTED]
                         if contradictions:
-                            st.error(f"🚨 **Contradiction Detected ({len(contradictions)} claim(s)):** Draft claims directly conflict with authoritative corpus evidence!")
+                            st.error(f"Contradiction Detected ({len(contradictions)} claim(s)): Draft claims directly conflict with authoritative corpus evidence.")
 
                         st.markdown("#### Claim-Level Verification Analysis")
                         st.caption("Each propositional claim in the draft is checked for evidence support, verbatim quote attribution, and contradiction:")
@@ -457,10 +492,10 @@ def main():
                             })
                         st.dataframe(pd.DataFrame(claims_data), use_container_width=True)
 
-                    # Phase 3 Iterative Re-Verification display
+                    # Post-revision re-verification display
                     if result.revision_result and result.revision_result.re_verification_result:
                         re_ver = result.revision_result.re_verification_result
-                        st.markdown("#### 🔄 Post-Revision Re-Verification (Iterative Loop)")
+                        st.markdown("#### Post-Revision Re-Verification (Iterative Loop)")
                         st.markdown(f"**Re-Verification Status:** `{re_ver.overall_status.value}`")
                         re_claims = []
                         for rc in re_ver.claims:
@@ -474,11 +509,11 @@ def main():
                         st.dataframe(pd.DataFrame(re_claims), use_container_width=True)
                 else:
                     st.info(
-                        f"Action was `{result.action_executed.upper()}`. External evidence retrieval was not indicated for this query."
+                        f"Action was {result.action_executed.upper()}. External evidence retrieval was not indicated for this query."
                     )
 
             with tab_cost:
-                st.subheader("Operational Resource & Cost Accounting")
+                st.subheader("Operational Resource and Cost Accounting")
                 st.caption("Distinguishing prior illustrative decision units from actual measured computational resources.")
 
                 col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
@@ -502,7 +537,7 @@ def main():
                 )
 
     # VIEW 2: Multi-Policy Benchmark Suite
-    elif app_mode == "📊 Multi-Policy Benchmark Suite":
+    elif app_mode == "Multi-Policy Benchmark Suite":
         st.markdown('<div class="main-header">Multi-Policy Research Benchmark Suite</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="sub-header">'
@@ -513,12 +548,12 @@ def main():
 
         st.markdown(
             r"""
-            This evaluation tests whether selective, cost-aware action routing improves the reliability–cost trade-off 
+            This evaluation tests whether selective, cost-aware action routing improves the reliability-cost trade-off 
             compared to uniform fixed pipelines:
             1. **Direct-Only**: Always answers directly without external tools.
             2. **Always-Retrieve**: Executes evidence retrieval for every query.
             3. **Fixed-Verify**: Retrieves evidence and checks claims for every query.
-            4. **Adaptive Policy**: Selects actions based on observable uncertainty cues and cost penalty $\lambda$.
+            4. **Adaptive Policy**: Selects actions based on observable uncertainty cues and cost penalty lambda.
             """
         )
 
@@ -527,7 +562,7 @@ def main():
 
         col_run, col_bar = st.columns([1, 3])
         with col_run:
-            start_benchmark = st.button("▶️ Run Full Benchmark Evaluation", type="primary")
+            start_benchmark = st.button("Run Full Benchmark Evaluation", type="primary")
 
         if start_benchmark or "benchmark_results" in st.session_state:
             if start_benchmark:
@@ -540,7 +575,7 @@ def main():
 
                 res = runner.run_benchmark(tradeoff_lambda=tradeoff_lambda, progress_callback=update_progress)
                 st.session_state["benchmark_results"] = res
-                status_txt.text("✅ Benchmark completed successfully!")
+                status_txt.text("Benchmark completed successfully.")
             else:
                 res = st.session_state["benchmark_results"]
 
@@ -553,14 +588,121 @@ def main():
             # Download results
             csv_data = res["detailed_df"].to_csv(index=False).encode("utf-8")
             st.download_button(
-                "📥 Download Detailed Benchmark Results (CSV)",
+                "Download Detailed Benchmark Results (CSV)",
                 data=csv_data,
                 file_name="benchmark_results.csv",
                 mime="text/csv",
             )
 
-    # VIEW 3: Local Knowledge Corpus
-    elif app_mode == "📚 Local Knowledge Corpus":
+    # VIEW 3: Statistical Uncertainty & Calibration (Phase 4)
+    elif app_mode == "Statistical Uncertainty & Calibration":
+        st.markdown('<div class="main-header">Statistical Uncertainty Estimation and Calibration (Phase 4)</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sub-header">'
+            'Evaluate multi-sample semantic disagreement, Expected Calibration Error (ECE), Brier score, '
+            'and verify strict separation between development and test data to prevent data leakage.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        tab_disagree, tab_calib, tab_splits = st.tabs([
+            "Multi-Sample Semantic Disagreement",
+            "Calibration Metrics and Reliability Diagram",
+            "Dataset Split and Leakage Prevention",
+        ])
+
+        with tab_disagree:
+            st.subheader("Multi-Sample Semantic Disagreement Analyzer")
+            st.markdown(
+                "Sample multiple stochastic candidate responses at elevated temperature to measure epistemic disagreement:"
+            )
+            sample_1 = st.text_input("Candidate Sample A:", value="Mount Everest's peak elevation is 8,848.86 meters above sea level.")
+            sample_2 = st.text_input("Candidate Sample B:", value="According to the 2020 survey, Mount Everest stands at 8,848.86 meters.")
+            sample_3 = st.text_input("Candidate Sample C:", value="Mount Everest has an official measured height of 8,848 meters.")
+
+            if st.button("Compute Multi-Sample Disagreement", type="primary"):
+                samples = [s for s in [sample_1, sample_2, sample_3] if s.strip()]
+                analysis = UncertaintyEstimator.compute_multi_sample_disagreement(samples)
+
+                col_d1, col_d2, col_d3 = st.columns(3)
+                with col_d1:
+                    st.metric("Mean Jaccard Distance", f"{analysis.mean_disagreement:.3f}")
+                with col_d2:
+                    st.metric("Lexical Entropy", f"{analysis.lexical_entropy:.3f}")
+                with col_d3:
+                    st.metric("Disagreement Level", analysis.disagreement_level)
+
+                st.markdown("#### Pairwise Distance Breakdown")
+                st.write(f"- Number of Samples Compared: `{analysis.num_samples}`")
+                for idx, dist in enumerate(analysis.pairwise_jaccard_distances):
+                    st.write(f"- Pair {idx+1} Jaccard Distance: `{dist:.3f}`")
+
+        with tab_calib:
+            st.subheader("Expected Calibration Error (ECE) and Temperature Scaling")
+            st.markdown(
+                "Evaluates how well predicted model confidence probabilities match empirical accuracy."
+            )
+
+            cal_engine = CalibrationEngine(num_bins=5)
+            # Simulated representative development trace
+            sample_confs = [0.95, 0.92, 0.88, 0.75, 0.72, 0.65, 0.58, 0.45, 0.35, 0.20]
+            sample_labels = [1, 1, 1, 1, 0, 1, 0, 0, 0, 0]
+
+            cal_metrics = cal_engine.compute_ece_and_brier(sample_confs, sample_labels)
+
+            col_c1, col_c2, col_c3 = st.columns(3)
+            with col_c1:
+                st.metric("Expected Calibration Error (ECE)", f"{cal_metrics.expected_calibration_error:.3f}")
+            with col_c2:
+                st.metric("Maximum Calibration Error (MCE)", f"{cal_metrics.maximum_calibration_error:.3f}")
+            with col_c3:
+                st.metric("Brier Score", f"{cal_metrics.brier_score:.3f}")
+
+            st.markdown("#### Reliability Diagram Bin Breakdown")
+            bins_data = [b.to_dict() for b in cal_metrics.bins]
+            st.dataframe(pd.DataFrame(bins_data), use_container_width=True)
+
+            st.markdown("#### Interactive Post-Hoc Temperature Scaling")
+            t_val = st.slider("Temperature Scaling Factor (T):", 0.2, 3.0, 1.25, 0.05)
+            test_prob = st.slider("Raw Test Probability:", 0.01, 0.99, 0.85, 0.01)
+            cal_engine.temperature = t_val
+            calibrated_p = cal_engine.calibrate_probability(test_prob)
+            st.write(f"Raw Probability: `{test_prob:.3f}` -> **Calibrated Probability:** `{calibrated_p:.3f}`")
+
+        with tab_splits:
+            st.subheader("Dataset Split and Leakage Prevention")
+            st.markdown(
+                """
+                **Protocol:**
+                Section 12 and 13 of the project specification mandate strict separation between:
+                - **Development/Validation Split:** For tuning calibration temperature, ambiguity thresholds, and cost weights.
+                - **Held-out Test Split:** For final evaluation only. Zero overlap is enforced to eliminate test-set leakage.
+                """
+            )
+            raw_dataset = runner.dataset
+            dev_data, test_data = split_dev_and_test(raw_dataset, dev_ratio=0.5, random_seed=42)
+
+            st.write(f"Total Benchmark Set: **{len(raw_dataset)}** queries | Dev Set: **{len(dev_data)}** | Test Set: **{len(test_data)}**")
+
+            dev_ids = {d["id"] for d in dev_data}
+            test_ids = {t["id"] for t in test_data}
+            overlap = dev_ids.intersection(test_ids)
+
+            if len(overlap) == 0:
+                st.success("Verification Passed: Zero overlap detected between Development and Test splits (No Data Leakage).")
+            else:
+                st.error(f"Leakage Alert: {len(overlap)} overlapping item(s) found!")
+
+            c_d, c_t = st.columns(2)
+            with c_d:
+                st.markdown("**Development Split (Tuning Only):**")
+                st.dataframe(pd.DataFrame(dev_data)[["id", "category", "query", "expected_action"]], use_container_width=True)
+            with c_t:
+                st.markdown("**Held-Out Test Split (Evaluation Only):**")
+                st.dataframe(pd.DataFrame(test_data)[["id", "category", "query", "expected_action"]], use_container_width=True)
+
+    # VIEW 4: Local Knowledge Corpus
+    elif app_mode == "Local Knowledge Corpus":
         st.markdown('<div class="main-header">Local Evidence Knowledge Corpus</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="sub-header">Inspect verified factual documents or add new passages to expand retrieval memory.</div>',
@@ -569,11 +711,11 @@ def main():
 
         st.write(f"Total Indexed Documents: **{len(retriever.documents)}** | Total Passages: **{len(retriever.passages)}**")
 
-        tab_list, tab_add = st.tabs(["📖 View Existing Documents", "➕ Add Document"])
+        tab_list, tab_add = st.tabs(["View Existing Documents", "Add Document"])
 
         with tab_list:
             for d in retriever.documents.values():
-                with st.expander(f"📄 {d.title} (ID: {d.doc_id})"):
+                with st.expander(f"{d.title} (ID: {d.doc_id})"):
                     st.write(d.text)
                     st.caption(f"Authoritative Source: {d.source}")
 
@@ -584,7 +726,7 @@ def main():
             new_source = st.text_input("Authoritative Source Reference:", placeholder="e.g. NASA Goddard Press Release 2023")
             new_text = st.text_area("Passage Text:", height=150, placeholder="Enter factual content...")
 
-            if st.button("Save & Index Document", type="primary"):
+            if st.button("Save and Index Document", type="primary"):
                 if new_id and new_title and new_text:
                     retriever.add_document(
                         doc_id=new_id.strip(),
@@ -593,14 +735,14 @@ def main():
                         text=new_text.strip(),
                         save=True,
                     )
-                    st.success(f"Document '{new_title}' successfully indexed into local evidence memory!")
+                    st.success(f"Document '{new_title}' successfully indexed into local evidence memory.")
                     st.rerun()
                 else:
                     st.error("Please fill in Document ID, Title, and Passage Text.")
 
-    # VIEW 4: Experiment Logs & Export
-    elif app_mode == "📜 Experiment Logs & Export":
-        st.markdown('<div class="main-header">Experiment Logging & Reproducibility</div>', unsafe_allow_html=True)
+    # VIEW 5: Experiment Logs & Export
+    elif app_mode == "Experiment Logs & Export":
+        st.markdown('<div class="main-header">Experiment Logging and Reproducibility</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="sub-header">Inspect historical run records, export SQLite logs to CSV or JSON, and inspect trace details.</div>',
             unsafe_allow_html=True,
@@ -623,7 +765,7 @@ def main():
             with col_exp_csv:
                 csv_bytes = df_runs.to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    "📥 Export Run Records as CSV",
+                    "Export Run Records as CSV",
                     data=csv_bytes,
                     file_name="experiment_runs.csv",
                     mime="text/csv",
@@ -632,7 +774,7 @@ def main():
             with col_exp_json:
                 json_bytes = df_runs.to_json(orient="records", indent=2).encode("utf-8")
                 st.download_button(
-                    "📥 Export Run Records as JSON",
+                    "Export Run Records as JSON",
                     data=json_bytes,
                     file_name="experiment_runs.json",
                     mime="application/json",
