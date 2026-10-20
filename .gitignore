@@ -17,6 +17,8 @@ htmlcov/
 # Logs & Database
 results/logs/*.jsonl
 results/logs/*.db
+results/*.db
+results/experiments.db
 results/exports/
 *.sqlite3
 *.log
