@@ -1,6 +1,6 @@
 """
 Adaptive, Cost-Aware Hallucination Mitigation for LLMs
-Research Prototype - Streamlit Web Dashboard (Phase 2 LLM Integration)
+Research Prototype - Streamlit Web Dashboard (Phase 3 Mitigation Tools)
 
 Provides:
 A. Interactive Query Evaluation & Main Dashboard
@@ -359,6 +359,26 @@ def main():
                 st.subheader("Response Output")
                 st.markdown(f'<div class="status-card">{result.final_answer}</div>', unsafe_allow_html=True)
 
+                # Phase 3 Interactive Multi-Turn Clarification Dialogue
+                if result.action_executed == "clarify" or result.clarification_request:
+                    st.info("💡 **Interactive Clarification Dialogue:** The controller detected ambiguity or missing criteria.")
+                    st.markdown("Please supply the missing criteria or context to complete this query turn:")
+                    clarif_input = st.text_input("Clarification Input:", key="clarif_user_input", placeholder="e.g., Which language has better libraries for data science, Python or JavaScript?")
+                    if st.button("Submit Clarification & Resolve", key="btn_clarif_submit"):
+                        if clarif_input.strip():
+                            with st.spinner("Resolving multi-turn clarification turn..."):
+                                resolved_res = controller.resolve_clarification_turn(
+                                    prior_result=result,
+                                    clarification_input=clarif_input,
+                                    policy_name=policy_choice,
+                                    tradeoff_lambda=tradeoff_lambda,
+                                    generation_settings=gen_settings,
+                                )
+                                st.session_state["last_result"] = resolved_res
+                                st.rerun()
+                        else:
+                            st.warning("Please provide clarification details before submitting.")
+
                 # Phase 2 Model Draft & Confidence Metadata Inspector
                 if result.model_draft:
                     with st.expander("🤖 Phase 2 Model Draft & Generation Metadata", expanded=True):
@@ -419,8 +439,12 @@ def main():
 
                     # Claim verification breakdown
                     if result.verification_result and result.verification_result.claims:
+                        contradictions = [c for c in result.verification_result.claims if c.status == ClaimStatus.CONTRADICTED]
+                        if contradictions:
+                            st.error(f"🚨 **Contradiction Detected ({len(contradictions)} claim(s)):** Draft claims directly conflict with authoritative corpus evidence!")
+
                         st.markdown("#### Claim-Level Verification Analysis")
-                        st.caption("Each propositional claim in the draft is checked for evidence support:")
+                        st.caption("Each propositional claim in the draft is checked for evidence support, verbatim quote attribution, and contradiction:")
                         claims_data = []
                         for c in result.verification_result.claims:
                             claims_data.append({
@@ -428,9 +452,26 @@ def main():
                                 "Status": c.status.value,
                                 "Confidence": f"{c.confidence_score:.1%}",
                                 "Supporting Reference": c.supporting_passage_id or "None",
+                                "Verbatim Quote": f'"{c.verbatim_quote}"' if c.verbatim_quote else "N/A",
                                 "Rationale": c.rationale,
                             })
                         st.dataframe(pd.DataFrame(claims_data), use_container_width=True)
+
+                    # Phase 3 Iterative Re-Verification display
+                    if result.revision_result and result.revision_result.re_verification_result:
+                        re_ver = result.revision_result.re_verification_result
+                        st.markdown("#### 🔄 Post-Revision Re-Verification (Iterative Loop)")
+                        st.markdown(f"**Re-Verification Status:** `{re_ver.overall_status.value}`")
+                        re_claims = []
+                        for rc in re_ver.claims:
+                            re_claims.append({
+                                "Revised Claim Text": rc.claim_text,
+                                "Status": rc.status.value,
+                                "Confidence": f"{rc.confidence_score:.1%}",
+                                "Supporting Reference": rc.supporting_passage_id or "None",
+                                "Rationale": rc.rationale,
+                            })
+                        st.dataframe(pd.DataFrame(re_claims), use_container_width=True)
                 else:
                     st.info(
                         f"Action was `{result.action_executed.upper()}`. External evidence retrieval was not indicated for this query."

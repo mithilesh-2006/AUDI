@@ -1,7 +1,7 @@
 # Adaptive, Cost-Aware Hallucination Mitigation for Large Language Models
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Tests Passing](https://img.shields.io/badge/tests-36%20passed-brightgreen.svg)](test_controller.py)
+[![Tests Passing](https://img.shields.io/badge/tests-54%20passed-brightgreen.svg)](test_controller.py)
 [![UI: Streamlit](https://img.shields.io/badge/UI-Streamlit-red.svg)](app.py)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -41,12 +41,16 @@ Where:
          ┌───────────────┬─────────────┼──────────────┬──────────────┐
          ▼               ▼             ▼              ▼              ▼
      DIRECT          CALCULATE     RETRIEVE        CLARIFY        ABSTAIN
-  (llm_provider)   (calculator)  (retrieval)    (Clarify Prompt) (Safe Refusal)
+  (model_adapter)  (calculator)  (retrieval)   (clarification) (Safe Refusal)
          │               │             │              │              │
          └───────────────┼─────────────┼──────────────┴──────────────┘
                          │             ▼
                          │    Verification & Revision
                          │  (src/verification.py, src/revision.py)
+                         │    - Propositional Decomposition
+                         │    - Contradiction Detection
+                         │    - Verbatim Quote Attribution
+                         │    - Post-Revision Re-Verification
                          │             │
                          └─────────────┼─────────────────────────────┐
                                        ▼                             ▼
@@ -63,17 +67,17 @@ Where:
 
 ---
 
-## 3. Candidate Actions & Implementation Status
+## 3. Candidate Actions & Mitigation Tools (Phase 3)
 
-| Action | Handler | Implementation Status | Purpose | Cost Unit |
+| Action | Handler | Implementation Details | Purpose | Cost Unit |
 |---|---|---|---|---|
-| **Direct** | `src/llm_provider.py` | ✅ Fully Working | Unassisted generation for low-risk general queries | 1.0 |
-| **Calculate** | `src/calculator.py` | ✅ Fully Working | Sandboxed AST evaluator for deterministic arithmetic (rejects arbitrary code) | 0.2 |
-| **Retrieve** | `src/retrieval.py` | ✅ Fully Working | BM25 lexical passage matching over local verified corpus | 3.5 |
-| **Clarify** | `src/controller.py` | ✅ Fully Working | Requests user context when ambiguity/missing criteria detected | 1.5 |
-| **Verify** | `src/verification.py` | ✅ Fully Working | Decomposes answer into claims and verifies against evidence (`Verified`, `Partially Supported`, `Unsupported`, `Not Checked`) | 5.0 |
-| **Revise** | `src/revision.py` | ✅ Fully Working | Redacts or hedges claims that fail evidence verification | 6.5 |
-| **Abstain** | `src/controller.py` | ✅ Fully Working | Refuses to guess on speculative future events or unknowable states | 0.4 |
+| **Direct** | `src/model_adapter.py` | ✅ Fully Working | Unassisted draft generation via pluggable adapters (Offline, OpenAI, Gemini, Ollama) | 1.0 |
+| **Calculate** | `src/calculator.py` | ✅ Fully Working | Sandboxed AST evaluator for deterministic arithmetic (rejects unsafe code / DoS) | 0.2 |
+| **Retrieve** | `src/retrieval.py` | ✅ Fully Working | BM25 lexical passage matching over local verified corpus with score gating | 3.5 |
+| **Clarify** | `src/clarification.py` | ✅ Fully Working | Formulates structured clarification queries and resolves multi-turn disambiguation | 1.5 |
+| **Verify** | `src/verification.py` | ✅ Fully Working | Decomposes answers into claims, checks numerical/entity contradictions, and attributes verbatim quotes (`SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`) | 5.0 |
+| **Revise** | `src/revision.py` | ✅ Fully Working | Redacts/hedges unsupported claims and runs a post-revision re-verification loop | 6.5 |
+| **Abstain** | `src/controller.py` | ✅ Fully Working | Refuses to guess on speculative future events, unknowable private states, or insufficient evidence | 0.4 |
 
 > **Crucial Rule:** The system **only** marks claims `Verified` when an actual evidence-based verification procedure has successfully completed. Retrieval alone is **not** verification.
 
@@ -82,14 +86,16 @@ Where:
 ## 4. Technology Stack
 
 - **Language:** Python 3.10+
-- **Frontend Dashboard:** Streamlit (`app.py`)
+- **Frontend Dashboard:** Streamlit (`app.py`) with interactive clarification dialogue and contradiction inspectors
 - **Backend Core:** Modular Python services (`src/`)
-- **Arithmetic Safety:** Python `ast` Visitor (no `eval()`)
-- **Retrieval Engine:** Lexical BM25 passage matching with threshold gating
-- **Verification:** Propositional claim decomposition with evidence alignment
-- **LLM Integration:** Pluggable adapter (`OfflineLocalProvider`, `OpenAIProvider`, `GeminiProvider`)
+- **Arithmetic Safety:** Python `ast` Visitor (zero `eval()`)
+- **Retrieval Engine:** Lexical BM25 passage matching with threshold gating (`src/retrieval.py`)
+- **Clarification:** Structured clarification engine and multi-turn state resolution (`src/clarification.py`)
+- **Verification:** Propositional claim decomposition with contradiction detection and verbatim quote attribution (`src/verification.py`)
+- **Revision:** Automated hedging/redaction with post-revision re-verification loop (`src/revision.py`)
+- **LLM Integration:** Pluggable adapter (`OfflineLocalAdapter`, `OpenAIAdapter`, `GeminiAdapter`, `OllamaAdapter`) with prompt versioning
 - **Experiment Storage:** SQLite (`results/experiments.db`) and JSONL (`results/logs/runs.jsonl`)
-- **Test Framework:** Python `unittest` / `pytest` (36 tests passing)
+- **Test Framework:** Python `unittest` (54 tests passing)
 
 ---
 

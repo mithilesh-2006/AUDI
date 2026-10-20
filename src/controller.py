@@ -1,8 +1,16 @@
 """
-Adaptive Hallucination Mitigation Controller (Phase 2 LLM Integration).
+Adaptive Hallucination Mitigation Controller (Phase 3 Mitigation Tools).
 
-Orchestrates signal extraction, cost-aware action selection, model adapter draft generation,
-evidence verification, revision, cost accounting, and experiment logging.
+Orchestrates:
+1. Signal extraction and uncertainty assessment.
+2. Cost-aware action routing.
+3. Safe deterministic AST calculation.
+4. Lexical BM25 evidence retrieval with threshold gating.
+5. Interactive multi-turn clarification sessions.
+6. Propositional claim verification with numerical and entity contradiction detection.
+7. Iterative answer revision and re-verification loops.
+8. Insufficient-evidence abstention.
+9. Cost accounting and structured logging.
 """
 
 from __future__ import annotations
@@ -26,6 +34,7 @@ from src.calculator import SafeCalculator, CalculationResult
 from src.retrieval import LocalCorpusRetriever, RetrievalResult, RetrievedPassage
 from src.verification import EvidenceVerifier, VerificationResult, VerificationStatus
 from src.revision import AnswerReviser, RevisionResult
+from src.clarification import ClarificationHandler, ClarificationSession
 from src.model_adapter import (
     BaseModelAdapter,
     ModelDraft,
@@ -47,11 +56,12 @@ class ExecutionResult:
     final_answer: str
     action_executed: str
     
-    # Sub-component execution results
+    # Sub-component execution results (Phase 3)
     calculation_result: Optional[CalculationResult] = None
     retrieval_result: Optional[RetrievalResult] = None
     verification_result: Optional[VerificationResult] = None
     revision_result: Optional[RevisionResult] = None
+    clarification_session: Optional[ClarificationSession] = None
     model_draft: Optional[ModelDraft] = None
     cost: Optional[CostAccounting] = None
 
@@ -68,13 +78,14 @@ class ExecutionResult:
             "retrieval_result": self.retrieval_result.to_dict() if self.retrieval_result else None,
             "verification_result": self.verification_result.to_dict() if self.verification_result else None,
             "revision_result": self.revision_result.to_dict() if self.revision_result else None,
+            "clarification_session": self.clarification_session.to_dict() if self.clarification_session else None,
             "model_draft": self.model_draft.to_dict() if self.model_draft else None,
             "cost": self.cost.to_dict() if self.cost else None,
         }
 
 
 class MitigationController:
-    """Main routing and execution controller with Phase 2 LLM Integration."""
+    """Main routing and execution controller with Phase 3 Mitigation Tools."""
 
     def __init__(
         self,
@@ -136,10 +147,11 @@ class MitigationController:
         ret_res: Optional[RetrievalResult] = None
         ver_res: Optional[VerificationResult] = None
         rev_res: Optional[RevisionResult] = None
+        clarify_session: Optional[ClarificationSession] = None
         draft: Optional[ModelDraft] = None
         final_answer = ""
 
-        # Step 3: Action Execution
+        # Step 3: Action Execution (Phase 3 Handlers)
         if action == "calculate":
             tool_calls += 1
             expr = signals.extracted_arithmetic_expr or query
@@ -149,25 +161,15 @@ class MitigationController:
             else:
                 final_answer = f"Calculator could not compute expression: {calc_res.error}"
                 tool_errors = calc_res.error
-            # No verification performed for deterministic calculator
             ver_res = VerificationResult(
                 overall_status=VerificationStatus.NOT_CHECKED,
                 summary_notes="Calculator output is deterministic; verification pipeline bypassed."
             )
 
         elif action == "clarify":
-            # Formulate structured clarification question
-            if signals.is_empty:
-                final_answer = "Your query was empty. Please provide the specific question or topic you would like addressed."
-            elif signals.ambiguity_reason:
-                final_answer = (
-                    f"To provide an accurate answer, could you please clarify? "
-                    f"Issue detected: {signals.ambiguity_reason}. "
-                    "For example, if comparing options, please specify which candidates and evaluation criteria you are interested in."
-                )
-            else:
-                final_answer = "The question appears ambiguous. Could you please provide more context or specify your requirements?"
-            
+            # Initiate structured interactive clarification session
+            clarify_session = ClarificationHandler.initiate_clarification(signals)
+            final_answer = clarify_session.clarification_prompt
             ver_res = VerificationResult(
                 overall_status=VerificationStatus.NOT_CHECKED,
                 summary_notes="Clarification requested; answer verification not applicable."
@@ -188,73 +190,92 @@ class MitigationController:
             tool_calls += 1
             ret_res = self.retriever.retrieve(query, top_k=3)
 
-            # Generate grounded draft using model adapter
-            model_calls += 1
-            evidence_context = ""
-            if ret_res.passages and ret_res.has_sufficient_evidence:
-                evidence_context = "\n".join([f"[{p.doc_title}]: {p.text}" for p in ret_res.passages])
-
-            draft = self.model_adapter.generate_draft(
-                query=query,
-                task_type="rag" if evidence_context else "direct",
-                evidence=evidence_context,
-                settings=gen_cfg
-            )
-            prompt_tokens += draft.prompt_tokens
-            completion_tokens += draft.completion_tokens
-            if draft.error:
-                tool_errors = draft.error
-
-            if ret_res.has_sufficient_evidence:
-                final_answer = draft.text
-                # Verification is NOT claimed simply because retrieval occurred
+            # Evidence Gating
+            if not ret_res.has_sufficient_evidence and selected_policy_name == PolicyType.ADAPTIVE.value:
+                # Insufficient-evidence abstention
+                final_answer = (
+                    "Abstention Notice: The local evidence corpus does not contain sufficient authoritative passages "
+                    "to ground an answer for this inquiry. To avoid generating ungrounded assertions, the system abstains "
+                    "from answering. (Note: Lack of local evidence does not imply the statement is universally false)."
+                )
                 ver_res = VerificationResult(
                     overall_status=VerificationStatus.NOT_CHECKED,
-                    summary_notes="Evidence retrieved and provided to generator. Verification step was not executed (Retrieval != Verification)."
+                    summary_notes="Insufficient local evidence; abstention executed."
                 )
             else:
-                final_answer = (
-                    f"{draft.text}\n\n"
-                    f"[Notice: Local evidence corpus did not contain sufficient authoritative passages for this query.]"
+                model_calls += 1
+                evidence_context = ""
+                if ret_res.passages and ret_res.has_sufficient_evidence:
+                    evidence_context = "\n".join([f"[{p.doc_title}]: {p.text}" for p in ret_res.passages])
+
+                draft = self.model_adapter.generate_draft(
+                    query=query,
+                    task_type="rag" if evidence_context else "direct",
+                    evidence=evidence_context,
+                    settings=gen_cfg
                 )
-                ver_res = VerificationResult(
-                    overall_status=VerificationStatus.NOT_CHECKED,
-                    summary_notes="No sufficient evidence found; verification not checked."
-                )
+                prompt_tokens += draft.prompt_tokens
+                completion_tokens += draft.completion_tokens
+                if draft.error:
+                    tool_errors = draft.error
+
+                if ret_res.has_sufficient_evidence:
+                    final_answer = draft.text
+                    ver_res = VerificationResult(
+                        overall_status=VerificationStatus.NOT_CHECKED,
+                        summary_notes="Evidence retrieved and provided to generator. Verification step was not executed (Retrieval != Verification)."
+                    )
+                else:
+                    final_answer = (
+                        f"{draft.text}\n\n"
+                        f"[Notice: Local evidence corpus did not contain sufficient authoritative passages for this query.]"
+                    )
+                    ver_res = VerificationResult(
+                        overall_status=VerificationStatus.NOT_CHECKED,
+                        summary_notes="No sufficient evidence found; verification not checked."
+                    )
 
         elif action == "verify":
-            # Full mitigation pipeline: Retrieve -> Generate draft -> Verify claims against evidence -> Revise if needed
-            tool_calls += 1  # retrieval
+            tool_calls += 1  # retrieval tool
             ret_res = self.retriever.retrieve(query, top_k=3)
 
-            # Generate draft
-            model_calls += 1
-            evidence_context = ""
-            if ret_res.has_sufficient_evidence:
+            # Evidence Gating for Verification
+            if not ret_res.has_sufficient_evidence:
+                final_answer = (
+                    "Abstention Notice: Cannot execute evidence verification because no relevant passages were found "
+                    "in the local corpus. The system abstains from verifying or asserting ungrounded facts."
+                )
+                ver_res = VerificationResult(
+                    overall_status=VerificationStatus.UNSUPPORTED,
+                    summary_notes="No grounding passages available; verification failed."
+                )
+            else:
+                model_calls += 1
                 evidence_context = "\n".join([f"[{p.doc_title}]: {p.text}" for p in ret_res.passages])
 
-            draft = self.model_adapter.generate_draft(
-                query=query,
-                task_type="rag" if evidence_context else "direct",
-                evidence=evidence_context,
-                settings=gen_cfg
-            )
-            prompt_tokens += draft.prompt_tokens
-            completion_tokens += draft.completion_tokens
-            if draft.error:
-                tool_errors = draft.error
-            draft_answer = draft.text
+                draft = self.model_adapter.generate_draft(
+                    query=query,
+                    task_type="rag",
+                    evidence=evidence_context,
+                    settings=gen_cfg
+                )
+                prompt_tokens += draft.prompt_tokens
+                completion_tokens += draft.completion_tokens
+                if draft.error:
+                    tool_errors = draft.error
+                draft_answer = draft.text
 
-            # Run claim-level verification
-            tool_calls += 1  # verification tool
-            ver_res = EvidenceVerifier.verify(draft_answer, ret_res.passages)
+                # Claim-level verification with contradiction detection
+                tool_calls += 1  # verification tool
+                ver_res = EvidenceVerifier.verify(draft_answer, ret_res.passages)
 
-            # Run revision if partially supported or unsupported
-            if ver_res.overall_status in (VerificationStatus.PARTIALLY_SUPPORTED, VerificationStatus.UNSUPPORTED):
-                rev_res = AnswerReviser.revise(draft_answer, ver_res, ret_res.passages)
-                final_answer = rev_res.revised_answer
-            else:
-                final_answer = draft_answer
+                # Iterative revision & re-verification loop if unsupported or contradicted
+                if ver_res.overall_status in (VerificationStatus.PARTIALLY_SUPPORTED, VerificationStatus.UNSUPPORTED):
+                    tool_calls += 1  # revision tool
+                    rev_res = AnswerReviser.revise(draft_answer, ver_res, ret_res.passages)
+                    final_answer = rev_res.revised_answer
+                else:
+                    final_answer = draft_answer
 
         else:  # "direct"
             model_calls += 1
@@ -303,6 +324,7 @@ class MitigationController:
             retrieval_result=ret_res,
             verification_result=ver_res,
             revision_result=rev_res,
+            clarification_session=clarify_session,
             model_draft=draft,
             cost=cost_record,
         )
@@ -311,7 +333,6 @@ class MitigationController:
         evidence_refs = [f"{p.doc_title} ({p.source_url_or_ref})" for p in (ret_res.passages if ret_res else [])]
         ver_status_str = ver_res.overall_status.value if ver_res else VerificationStatus.NOT_CHECKED.value
 
-        # Evaluation correctness check (if reference answer supplied)
         is_corr: Optional[bool] = None
         if reference_answer:
             ref_clean = reference_answer.lower().strip()
@@ -352,4 +373,23 @@ class MitigationController:
         )
         self.logger.log_run(log_record)
 
+        return result
+
+    def resolve_clarification_turn(
+        self,
+        session: ClarificationSession,
+        user_response: str,
+        policy_name: Optional[str] = None,
+        tradeoff_lambda: Optional[float] = None,
+    ) -> ExecutionResult:
+        """Resolve a clarification dialogue turn with user feedback."""
+        resolved_session = ClarificationHandler.resolve_clarification(session, user_response)
+        
+        # Execute the disambiguated query
+        result = self.process_query(
+            query=resolved_session.disambiguated_query or user_response,
+            policy_name=policy_name,
+            tradeoff_lambda=tradeoff_lambda,
+        )
+        result.clarification_session = resolved_session
         return result

@@ -170,13 +170,30 @@ All actions, decision rationales, uncertainty signals, latency, token usage, and
 
 ## 5. Implementation Roadmap & Milestones
 
-- [x] Stage 1: Inspect repository, verify environment, create `IMPLEMENTATION_PLAN.md`.
-- [ ] Stage 2: Core modules implementation (`src/`):
-  - `signals.py`, `calculator.py`, `retrieval.py`, `verification.py`, `revision.py`
-  - `llm_provider.py`, `cost_tracker.py`, `logging_service.py`
-  - `policy.py`, `controller.py`, `experiment_runner.py`
-- [ ] Stage 3: Benchmark dataset & default local evidence corpus (`data/`).
-- [ ] Stage 4: Comprehensive test suite in `tests/` and test verification.
-- [ ] Stage 5: Research-grade Streamlit web application (`app.py`).
-- [ ] Stage 6: Supporting documentation: `README.md`, `.env.example`, `.gitignore`, `requirements.txt`, `LIMITATIONS.md`, `NEXT_STEPS.md`.
-- [ ] Stage 7: End-to-end execution, UI verification, final reporting.
+- [x] **Phase 1: Transparent Rule-Based Baseline & Core Architecture (Completed)**
+  - Safe restricted AST calculator (`src/calculator.py`).
+  - Query signal and uncertainty extraction (`src/signals.py`).
+  - Local BM25 corpus retrieval (`src/retrieval.py` + `data/corpus/knowledge_base.json`).
+  - Dual cost tracker: prior cost units $C_{\text{prior}}$ vs measured monetary USD (`src/cost_tracker.py`).
+  - Multi-policy comparative experiment runner (`src/experiment_runner.py`).
+  - SQLite and JSONL persistent logger (`src/logging_service.py`).
+  - Interactive Streamlit dashboard (`app.py`) and CLI controller (`controller.py`).
+
+- [x] **Phase 2: Pluggable Model Adapters & Prompt Versioning (Completed)**
+  - Unified adapter interface (`BaseModelAdapter`) with `OfflineLocalAdapter`, `OpenAIAdapter`, `GeminiAdapter`, and `OllamaAdapter` (`src/model_adapter.py`).
+  - Versioned prompt manager (`PromptManager`) with `v1.0-standard`, `v2.0-concise`, and `v1.1-with-confidence-elicitation`.
+  - Configurable generation decoding settings (`GenerationSettings`: temperature, top-p, max-tokens).
+  - Explicit experimental confidence logging (`model_reported_confidence`, non-ground-truth disclaimers).
+  - Schema extension with graceful API error catching (`tool_errors`).
+
+- [x] **Phase 3: Deep Mitigation Tools & Verification Loop (Completed)**
+  - **Structured Clarification Dialogue:** Ambiguity classification, question formulation, and multi-turn state resolution (`src/clarification.py`, `MitigationController.resolve_clarification_turn()`).
+  - **Propositional Claim Verification & Contradiction Detection:** Granular sentence splitting, numerical and entity contradiction detection (`ClaimStatus.CONTRADICTED`), and exact verbatim quote attribution (`src/verification.py`).
+  - **Iterative Revision & Re-Verification Loop:** Automatic redaction and hedging of unsupported claims, followed by a second-pass re-verification check to evaluate whether defects were eliminated (`src/revision.py`).
+  - **Insufficient-Evidence Gating & Abstention:** Gated retrieval confidence routing: when corpus evidence does not meet relevance threshold, controller safely abstains instead of hallucinating (`src/controller.py`).
+  - **Streamlit Interactive UI:** Clarification response input and re-evaluator, contradiction alerts, verbatim quotes, and post-revision re-verification badges (`app.py`).
+  - **Test Suite:** 54 passing unit tests covering all phases (`tests/test_actions.py`, `test_controller.py`).
+
+- [ ] **Phase 4: Statistical Uncertainty Calibration & Learned Cost Utility (Next)**
+  - Historical trace calibration (ECE, Brier score).
+  - Data-driven utility scoring replacing heuristic routing rules.

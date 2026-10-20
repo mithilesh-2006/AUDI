@@ -93,7 +93,7 @@ class SignalExtractor:
         "released in", "discovered by", "formula for", "speed of light",
         "elevation of", "height of", "depth of", "mount everest", "apollo 11",
         "moon landing", "alan turing", "turing machine", "photoelectric effect",
-        "how tall is", "how high is"
+        "how tall is", "how high is", "average rainfall", "rainfall in", "temperature of"
     ]
 
     # Temporal freshness / live event queries

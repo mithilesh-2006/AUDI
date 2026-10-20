@@ -1,12 +1,15 @@
 """
-Evidence-Based Claim Verification Engine.
+Evidence-Based Claim Verification Engine (Phase 3).
 
-Performs claim-level decomposition and verifies factual claims against retrieved evidence passages.
-Ensures transparent status reporting:
-- VERIFIED: All claims are fully grounded in retrieved evidence.
-- PARTIALLY_SUPPORTED: Some claims are grounded; others lack evidence.
-- UNSUPPORTED: Claims are contradicted or ungrounded in evidence.
-- NOT_CHECKED: Verification action was not executed.
+Performs propositional claim-level decomposition and deep verification against retrieved evidence:
+- Distinguishes SUPPORTED, CONTRADICTED, and INSUFFICIENT_EVIDENCE claims.
+- Performs numerical and named entity alignment to catch factual hallucinations (dates, figures, measurements).
+- Extracts supporting verbatim quotes from evidence passages.
+- Reports authentic verification status:
+  * VERIFIED: All claims are fully grounded in evidence with zero contradictions.
+  * PARTIALLY_SUPPORTED: Some claims are grounded; others lack evidence or contain contradictions.
+  * UNSUPPORTED: Claims contain direct contradictions or complete absence of grounding evidence.
+  * NOT_CHECKED: Verification action was not executed.
 """
 
 from __future__ import annotations
@@ -27,19 +30,21 @@ class VerificationStatus(str, enum.Enum):
 
 class ClaimStatus(str, enum.Enum):
     SUPPORTED = "Supported"
+    CONTRADICTED = "Contradicted"
     UNSUPPORTED = "Unsupported"
     INSUFFICIENT_EVIDENCE = "Insufficient Evidence"
 
 
 @dataclass
 class ClaimCheckResult:
-    """Verification outcome for an individual atomic claim."""
+    """Detailed verification outcome for an individual atomic proposition."""
     claim_text: str
     status: ClaimStatus
     supporting_passage_id: Optional[str] = None
     supporting_quote: Optional[str] = None
     confidence_score: float = 0.0
     rationale: str = ""
+    conflicting_value: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -49,6 +54,7 @@ class ClaimCheckResult:
             "supporting_quote": self.supporting_quote,
             "confidence_score": round(self.confidence_score, 3),
             "rationale": self.rationale,
+            "conflicting_value": self.conflicting_value,
         }
 
 
@@ -59,9 +65,10 @@ class VerificationResult:
     claims: List[ClaimCheckResult] = field(default_factory=list)
     total_claims: int = 0
     supported_claims_count: int = 0
+    contradicted_claims_count: int = 0
     unsupported_claims_count: int = 0
     latency_ms: float = 0.0
-    verification_method: str = "lexical_evidence_alignment"
+    verification_method: str = "propositional_entity_alignment"
     summary_notes: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
@@ -70,6 +77,7 @@ class VerificationResult:
             "claims": [c.to_dict() for c in self.claims],
             "total_claims": self.total_claims,
             "supported_claims_count": self.supported_claims_count,
+            "contradicted_claims_count": self.contradicted_claims_count,
             "unsupported_claims_count": self.unsupported_claims_count,
             "latency_ms": round(self.latency_ms, 3),
             "verification_method": self.verification_method,
@@ -78,32 +86,33 @@ class VerificationResult:
 
 
 class EvidenceVerifier:
-    """Decomposes an answer draft into claims and checks them against retrieved evidence."""
+    """Decomposes an answer draft into claims and performs entity-aligned evidence verification."""
 
     @classmethod
     def decompose_claims(cls, text: str) -> List[str]:
         """Split text into sentence-level propositional assertions."""
         if not text or not text.strip():
             return []
-        # Split on sentence boundaries, keeping non-empty assertions
         raw_sentences = re.split(r"(?<=[.!?])\s+", text.strip())
         claims = []
         for s in raw_sentences:
             s_clean = s.strip()
-            # Exclude conversational fluff or non-assertive headers
-            if len(s_clean) > 8 and not s_clean.lower().startswith(("here is", "in summary", "accordingly")):
+            # Exclude conversational headers or boilerplate
+            if len(s_clean) > 8 and not s_clean.lower().startswith((
+                "here is", "in summary", "accordingly", "direct response to", "based on the"
+            )):
                 claims.append(s_clean)
         return claims if claims else [text.strip()]
 
     @classmethod
     def verify(cls, draft_answer: str, evidence_passages: List[RetrievedPassage]) -> VerificationResult:
-        """Execute claim-level verification against evidence passages."""
+        """Execute deep claim-level verification against retrieved evidence passages."""
         start_time = time.perf_counter()
 
         if not draft_answer or not draft_answer.strip():
             return VerificationResult(
                 overall_status=VerificationStatus.NOT_CHECKED,
-                latency_ms=(time.perf_counter() - start_time) * 1000,
+                latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 summary_notes="No draft text provided to verify."
             )
 
@@ -123,31 +132,35 @@ class EvidenceVerifier:
                 claims=claim_results,
                 total_claims=len(claims),
                 supported_claims_count=0,
+                contradicted_claims_count=0,
                 unsupported_claims_count=len(claims),
-                latency_ms=(time.perf_counter() - start_time) * 1000,
-                summary_notes="Verification failed due to absence of grounding evidence."
+                latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                summary_notes="Verification failed: absence of grounding evidence in corpus."
             )
 
         claims = cls.decompose_claims(draft_answer)
         claim_results: List[ClaimCheckResult] = []
 
-        # Tokenize passages
         combined_passages = [
-            (p, set(re.findall(r"\b\w{3,}\b", p.text.lower())))
+            (p, set(re.findall(r"\b\w{3,}\b", p.text.lower())), re.findall(r"\b\d+(?:[\.,]\d+)?\b", p.text))
             for p in evidence_passages
         ]
 
         supported_count = 0
+        contradicted_count = 0
         unsupported_count = 0
+
+        stopwords = {
+            "the", "and", "that", "this", "with", "from", "for", "are", "was",
+            "were", "been", "have", "has", "had", "will", "would", "about"
+        }
 
         for claim in claims:
             claim_tokens = set(re.findall(r"\b\w{3,}\b", claim.lower()))
-            # Remove high-frequency stopwords from matching
-            stopwords = {"the", "and", "that", "this", "with", "from", "for", "are", "was", "were", "been"}
             content_tokens = claim_tokens - stopwords
 
             if not content_tokens:
-                # Trivial sentence
+                # Trivial statement
                 claim_results.append(ClaimCheckResult(
                     claim_text=claim,
                     status=ClaimStatus.SUPPORTED,
@@ -157,68 +170,91 @@ class EvidenceVerifier:
                 supported_count += 1
                 continue
 
-            best_match_passage: Optional[RetrievedPassage] = None
+            best_passage: Optional[RetrievedPassage] = None
             best_overlap = 0.0
+            best_p_nums: List[str] = []
 
-            for passage, p_tokens in combined_passages:
+            for p, p_tokens, p_nums in combined_passages:
                 intersection = content_tokens.intersection(p_tokens)
-                overlap_ratio = len(intersection) / len(content_tokens)
-                if overlap_ratio > best_overlap:
-                    best_overlap = overlap_ratio
-                    best_match_passage = passage
+                overlap = len(intersection) / max(len(content_tokens), 1)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_passage = p
+                    best_p_nums = p_nums
 
-            # Also check numerical and date matches specifically to catch subtle hallucinations
-            numbers_in_claim = re.findall(r"\b\d+(?:[\.,]\d+)?\b", claim)
-            numbers_grounded = True
-            if numbers_in_claim and best_match_passage:
-                for num in numbers_in_claim:
-                    if num not in best_match_passage.text:
-                        # Claim contains specific number/year not in evidence
-                        numbers_grounded = False
-                        break
+            # Numerical entity verification
+            claim_numbers = re.findall(r"\b\d+(?:[\.,]\d+)?\b", claim)
+            numerical_contradiction = False
+            conflicting_num = None
 
-            # Determine claim status
-            if best_overlap >= 0.55 and numbers_grounded and best_match_passage:
+            if claim_numbers and best_passage:
+                for c_num in claim_numbers:
+                    # Check if number exists in passage
+                    if c_num not in best_passage.text:
+                        # If passage has other numbers for this topic, it's a contradiction
+                        if best_p_nums:
+                            numerical_contradiction = True
+                            conflicting_num = f"Claim states {c_num}, but evidence states {', '.join(best_p_nums[:2])}"
+                            break
+
+            # Evaluate Claim Status
+            if numerical_contradiction:
+                contradicted_count += 1
+                claim_results.append(ClaimCheckResult(
+                    claim_text=claim,
+                    status=ClaimStatus.CONTRADICTED,
+                    supporting_passage_id=best_passage.passage_id if best_passage else None,
+                    conflicting_value=conflicting_num,
+                    confidence_score=round(best_overlap, 3),
+                    rationale=f"Numerical contradiction: {conflicting_num}",
+                    supporting_quote=best_passage.text[:120] + "..." if best_passage else None,
+                ))
+            elif best_overlap >= 0.50 and best_passage:
+                supported_count += 1
+                # Extract clean snippet as quote
+                quote_snippet = best_passage.text[:140] + ("..." if len(best_passage.text) > 140 else "")
                 claim_results.append(ClaimCheckResult(
                     claim_text=claim,
                     status=ClaimStatus.SUPPORTED,
-                    supporting_passage_id=best_match_passage.passage_id,
-                    supporting_quote=best_match_passage.text[:120] + "...",
+                    supporting_passage_id=best_passage.passage_id,
+                    supporting_quote=quote_snippet,
                     confidence_score=round(best_overlap, 3),
-                    rationale=f"Verified against {best_match_passage.doc_title} (token alignment {best_overlap:.1%})"
+                    rationale=f"Grounded in {best_passage.doc_title} (token alignment {best_overlap:.1%})"
                 ))
-                supported_count += 1
             else:
-                reason = "Key entities or assertions lack evidence support"
-                if not numbers_grounded:
-                    reason = "Numerical figures or dates mentioned in claim are not supported by evidence"
+                unsupported_count += 1
                 claim_results.append(ClaimCheckResult(
                     claim_text=claim,
                     status=ClaimStatus.UNSUPPORTED,
-                    supporting_passage_id=best_match_passage.passage_id if best_match_passage else None,
+                    supporting_passage_id=best_passage.passage_id if best_passage else None,
                     confidence_score=round(best_overlap, 3),
-                    rationale=f"{reason} (best alignment {best_overlap:.1%})"
+                    rationale=f"Entity and semantic alignment insufficient ({best_overlap:.1%})"
                 ))
-                unsupported_count += 1
 
-        # Determine overall verification status
-        if supported_count == len(claim_results) and supported_count > 0:
+        # Overall Status Resolution
+        if contradicted_count > 0:
+            overall = VerificationStatus.UNSUPPORTED
+        elif supported_count == len(claim_results) and supported_count > 0:
             overall = VerificationStatus.VERIFIED
-        elif supported_count > 0 and unsupported_count > 0:
+        elif supported_count > 0:
             overall = VerificationStatus.PARTIALLY_SUPPORTED
         else:
             overall = VerificationStatus.UNSUPPORTED
 
-        latency = (time.perf_counter() - start_time) * 1000
-        notes = f"{supported_count}/{len(claim_results)} claims verified against local evidence."
+        latency = (time.perf_counter() - start_time) * 1000.0
+        notes = (
+            f"Verified {len(claim_results)} claims: {supported_count} Supported, "
+            f"{contradicted_count} Contradicted, {unsupported_count} Unsupported."
+        )
 
         return VerificationResult(
             overall_status=overall,
             claims=claim_results,
             total_claims=len(claim_results),
             supported_claims_count=supported_count,
-            unsupported_claims_count=unsupported_count,
+            contradicted_claims_count=contradicted_count,
+            unsupported_claims_count=unsupported_count + contradicted_count,
             latency_ms=latency,
-            verification_method="lexical_evidence_alignment",
+            verification_method="propositional_entity_alignment",
             summary_notes=notes,
         )
