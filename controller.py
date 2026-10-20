@@ -104,6 +104,13 @@ def display_result(res: ExecutionResult, compact: bool = False):
     if res.cost:
         print(f"Operational Cost:  {res.cost.latency_ms:.1f} ms | {res.cost.total_tokens} tokens | {res.cost.tool_calls_count} tool calls | ${res.cost.monetary_cost_usd:.6f}")
     
+    if res.execution_time_comparison:
+        c = res.execution_time_comparison
+        print(f"Direct Exec Time:  {c.direct_latency_ms:.2f} ms")
+        print(f"AUDI Exec Time:    {c.audi_latency_ms:.2f} ms (Overhead: {c.audi_decision_overhead_ms:.3f} ms, Action: {c.audi_action_execution_ms:.2f} ms)")
+        print(f"Latency Delta:     {'+' if c.latency_delta_ms >= 0 else ''}{c.latency_delta_ms:.2f} ms ({c.speedup_factor:.1f}x speedup)")
+        print(f"Efficiency Note:   {c.efficiency_summary}")
+
     print(f"Verification:      {res.verification_result.overall_status.value if res.verification_result else 'Not Checked'}")
     print(f"Final Answer:      {res.final_answer}")
     

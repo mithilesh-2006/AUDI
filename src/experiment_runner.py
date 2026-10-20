@@ -48,6 +48,7 @@ class PolicyEvaluationSummary:
     total_monetary_cost_usd: float
     cost_per_correct_answer_usd: float
     unnecessary_tool_use_rate: float
+    avg_decision_overhead_ms: float = 0.0
     action_distribution: Dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -58,6 +59,7 @@ class PolicyEvaluationSummary:
             "Unsupported Claim Rate": f"{self.unsupported_claim_rate:.1%}",
             "Abstention on Unanswerables": f"{self.abstention_rate_on_unanswerable:.1%}",
             "Avg Latency (ms)": round(self.avg_latency_ms, 1),
+            "Avg Decision Overhead (ms)": round(self.avg_decision_overhead_ms, 3),
             "Avg Tokens": round(self.avg_tokens_per_query, 1),
             "Avg Tool Calls": round(self.avg_tool_calls_per_query, 2),
             "Unnecessary Tool Rate": f"{self.unnecessary_tool_use_rate:.1%}",
@@ -145,6 +147,7 @@ class ExperimentRunner:
             total_tok = 0
             total_tools = 0
             total_cost = 0.0
+            total_overhead = 0.0
             correct_count = 0
             evidence_supported_count = 0
             total_claims = 0
@@ -182,6 +185,9 @@ class ExperimentRunner:
                     total_tok += res.cost.total_tokens
                     total_tools += res.cost.tool_calls_count
                     total_cost += res.cost.monetary_cost_usd
+
+                if res.execution_time_comparison:
+                    total_overhead += res.execution_time_comparison.decision_overhead_ms
 
                 # Evaluation scoring
                 ans_text = res.final_answer.lower()
@@ -255,6 +261,10 @@ class ExperimentRunner:
                     "Unnecessary Tool": is_unnecessary_tool,
                     "Answer": res.final_answer[:90] + ("..." if len(res.final_answer) > 90 else ""),
                     "Latency (ms)": round(res.cost.latency_ms, 1) if res.cost else 0,
+                    "Direct Latency (ms)": round(res.execution_time_comparison.direct_baseline_ms, 2) if res.execution_time_comparison else (round(res.cost.latency_ms, 2) if res.cost else 0),
+                    "AUDI Latency (ms)": round(res.execution_time_comparison.audi_controller_total_ms, 2) if res.execution_time_comparison else (round(res.cost.latency_ms, 2) if res.cost else 0),
+                    "Decision Overhead (ms)": round(res.execution_time_comparison.decision_overhead_ms, 3) if res.execution_time_comparison else 0.0,
+                    "Speedup Factor": round(res.execution_time_comparison.speedup_factor, 2) if res.execution_time_comparison else 1.0,
                     "Tokens": res.cost.total_tokens if res.cost else 0,
                     "Tool Calls": res.cost.tool_calls_count if res.cost else 0,
                     "Verification Status": res.verification_result.overall_status.value if res.verification_result else "Not Checked",
@@ -272,6 +282,7 @@ class ExperimentRunner:
                 unsupported_claim_rate=(unsupported_claims / max(total_claims, 1)) if total_claims > 0 else 0.0,
                 abstention_rate_on_unanswerable=(unanswerable_abstained / max(unanswerable_total, 1)) if unanswerable_total > 0 else 1.0,
                 avg_latency_ms=total_lat / max(n, 1),
+                avg_decision_overhead_ms=total_overhead / max(n, 1),
                 avg_tokens_per_query=total_tok / max(n, 1),
                 avg_tool_calls_per_query=total_tools / max(n, 1),
                 total_monetary_cost_usd=total_cost,

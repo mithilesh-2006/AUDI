@@ -58,6 +58,20 @@ class TestControllerRouting(unittest.TestCase):
         res_ver = self.controller.process_query("What is 14 * 25?", policy_name=PolicyType.FIXED_VERIFY.value)
         self.assertEqual(res_ver.action_executed, "verify")
 
+    def test_execution_time_comparison(self):
+        """Test that execution time comparison measures direct latency, audi latency, and overhead."""
+        res = self.controller.process_query("Calculate 100 + 200", compare_direct_execution=True)
+        self.assertIsNotNone(res.execution_time_comparison)
+        comp = res.execution_time_comparison
+        self.assertGreater(comp.direct_baseline_ms, 0.0)
+        self.assertGreater(comp.audi_controller_total_ms, 0.0)
+        self.assertGreater(comp.decision_overhead_ms, 0.0)
+        self.assertGreater(comp.action_execution_ms, 0.0)
+        self.assertIsNotNone(comp.latency_delta_ms)
+        self.assertGreater(comp.speedup_factor, 0.0)
+        self.assertIsInstance(comp.efficiency_summary, str)
+        self.assertIn("direct_latency_ms", comp.to_dict())
+
 
 if __name__ == "__main__":
     unittest.main()
