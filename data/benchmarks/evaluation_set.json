@@ -1,0 +1,98 @@
+[
+  {
+    "id": "bench_math_01",
+    "category": "Arithmetic",
+    "query": "Calculate (120 + 45) / 5",
+    "reference_answer": "33",
+    "expected_action": "calculate",
+    "description": "Deterministic arithmetic expression"
+  },
+  {
+    "id": "bench_math_02",
+    "category": "Arithmetic",
+    "query": "What is 14 * 25?",
+    "reference_answer": "350",
+    "expected_action": "calculate",
+    "description": "Multiplication query"
+  },
+  {
+    "id": "bench_math_03",
+    "category": "Arithmetic",
+    "query": "Compute 2 ^ 8",
+    "reference_answer": "256",
+    "expected_action": "calculate",
+    "description": "Exponentiation query"
+  },
+  {
+    "id": "bench_fact_01",
+    "category": "Factual QA",
+    "query": "What is the elevation of Mount Everest according to the 2020 survey?",
+    "reference_answer": "8,848.86",
+    "expected_action": "retrieve",
+    "description": "Factual query requiring precise elevation evidence"
+  },
+  {
+    "id": "bench_fact_02",
+    "category": "Factual QA",
+    "query": "What is the exact speed of light in vacuum?",
+    "reference_answer": "299,792,458",
+    "expected_action": "retrieve",
+    "description": "Universal physical constant inquiry"
+  },
+  {
+    "id": "bench_fact_03",
+    "category": "Factual QA",
+    "query": "When did Apollo 11 land on the Moon?",
+    "reference_answer": "July 20, 1969",
+    "expected_action": "retrieve",
+    "description": "Historical date inquiry"
+  },
+  {
+    "id": "bench_fact_04",
+    "category": "Factual QA",
+    "query": "Why did Albert Einstein win the Nobel Prize in Physics?",
+    "reference_answer": "photoelectric effect",
+    "expected_action": "retrieve",
+    "description": "Specific historical prize citation (often hallucinated as relativity)"
+  },
+  {
+    "id": "bench_ambig_01",
+    "category": "Ambiguity",
+    "query": "Which one is better?",
+    "reference_answer": "clarify",
+    "expected_action": "clarify",
+    "description": "Missing comparison candidates and criteria"
+  },
+  {
+    "id": "bench_ambig_02",
+    "category": "Ambiguity",
+    "query": "Is it good?",
+    "reference_answer": "clarify",
+    "expected_action": "clarify",
+    "description": "Missing referent context for pronoun 'it'"
+  },
+  {
+    "id": "bench_ambig_03",
+    "category": "Ambiguity",
+    "query": "Why did it happen?",
+    "reference_answer": "clarify",
+    "expected_action": "clarify",
+    "description": "Missing event context"
+  },
+  {
+    "id": "bench_unans_01",
+    "category": "Unanswerable / Speculation",
+    "query": "Will Bitcoin hit $500,000 in 2035?",
+    "reference_answer": "abstain",
+    "expected_action": "abstain",
+    "description": "Unknowable future asset price speculation"
+  },
+  {
+    "id": "bench_unans_02",
+    "category": "Unanswerable / Speculation",
+    "query": "What am I thinking right now?",
+    "reference_answer": "abstain",
+    "expected_action": "abstain",
+    "description": "Unknowable private human mental state"
+  }
+]
