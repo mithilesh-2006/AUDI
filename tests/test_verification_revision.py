@@ -66,5 +66,20 @@ class TestVerificationAndRevision(unittest.TestCase):
         self.assertIn("Mount Everest Elevation", rev_res.revised_answer)
 
 
+    def test_insufficient_evidence_label(self):
+        """Test that ungrounded assertions receive INSUFFICIENT_EVIDENCE rather than false/contradicted."""
+        answer = "The atmospheric pressure at the summit of K2 varies seasonally."
+        res = EvidenceVerifier.verify(answer, self.evidence)
+        self.assertEqual(len(res.claims), 1)
+        self.assertEqual(res.claims[0].status, ClaimStatus.INSUFFICIENT_EVIDENCE)
+        self.assertIn("absence of local evidence does not imply", res.claims[0].rationale)
+
+    def test_not_checkable_label(self):
+        """Test that non-content, conversational assertions receive NOT_CHECKABLE."""
+        answer = "In general, it is what it is."
+        res = EvidenceVerifier.verify(answer, self.evidence)
+        self.assertEqual(res.claims[0].status, ClaimStatus.NOT_CHECKABLE)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -31,8 +31,9 @@ class VerificationStatus(str, enum.Enum):
 class ClaimStatus(str, enum.Enum):
     SUPPORTED = "Supported"
     CONTRADICTED = "Contradicted"
-    UNSUPPORTED = "Unsupported"
     INSUFFICIENT_EVIDENCE = "Insufficient Evidence"
+    NOT_CHECKABLE = "Not Checkable"
+    UNSUPPORTED = "Insufficient Evidence"  # Backwards compatibility alias
 
 
 @dataclass
@@ -66,6 +67,8 @@ class VerificationResult:
     total_claims: int = 0
     supported_claims_count: int = 0
     contradicted_claims_count: int = 0
+    insufficient_evidence_claims_count: int = 0
+    not_checkable_claims_count: int = 0
     unsupported_claims_count: int = 0
     latency_ms: float = 0.0
     verification_method: str = "propositional_entity_alignment"
@@ -78,6 +81,8 @@ class VerificationResult:
             "total_claims": self.total_claims,
             "supported_claims_count": self.supported_claims_count,
             "contradicted_claims_count": self.contradicted_claims_count,
+            "insufficient_evidence_claims_count": self.insufficient_evidence_claims_count,
+            "not_checkable_claims_count": self.not_checkable_claims_count,
             "unsupported_claims_count": self.unsupported_claims_count,
             "latency_ms": round(self.latency_ms, 3),
             "verification_method": self.verification_method,
@@ -133,6 +138,8 @@ class EvidenceVerifier:
                 total_claims=len(claims),
                 supported_claims_count=0,
                 contradicted_claims_count=0,
+                insufficient_evidence_claims_count=len(claims),
+                not_checkable_claims_count=0,
                 unsupported_claims_count=len(claims),
                 latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 summary_notes="Verification failed: absence of grounding evidence in corpus."
@@ -148,26 +155,35 @@ class EvidenceVerifier:
 
         supported_count = 0
         contradicted_count = 0
-        unsupported_count = 0
+        insufficient_evidence_count = 0
+        not_checkable_count = 0
 
         stopwords = {
             "the", "and", "that", "this", "with", "from", "for", "are", "was",
             "were", "been", "have", "has", "had", "will", "would", "about"
         }
 
+        NON_CHECKABLE_PATTERNS = re.compile(
+            r"^(in\s+my\s+opinion|i\s+believe|i\s+think|arguably|it\s+is\s+what\s+it\s+is|"
+            r"in\s+general|generally\s+speaking|overall|as\s+such|conversely|"
+            r"this\s+is\s+(good|bad|nice|great|interesting)|"
+            r"it\s+is\s+(good|better|best|worse|important|vital))\b",
+            re.IGNORECASE
+        )
+
         for claim in claims:
             claim_tokens = set(re.findall(r"\b\w{3,}\b", claim.lower()))
             content_tokens = claim_tokens - stopwords
 
-            if not content_tokens:
-                # Trivial statement
+            if not content_tokens or NON_CHECKABLE_PATTERNS.search(claim.strip()):
+                # Conversational or non-empirical statement
                 claim_results.append(ClaimCheckResult(
                     claim_text=claim,
-                    status=ClaimStatus.SUPPORTED,
+                    status=ClaimStatus.NOT_CHECKABLE,
                     confidence_score=0.9,
-                    rationale="Non-factual or functional statement."
+                    rationale="Subjective, conversational, or non-empirical statement outside objective evidence verification."
                 ))
-                supported_count += 1
+                not_checkable_count += 1
                 continue
 
             best_passage: Optional[RetrievedPassage] = None
@@ -222,13 +238,13 @@ class EvidenceVerifier:
                     rationale=f"Grounded in {best_passage.doc_title} (token alignment {best_overlap:.1%})"
                 ))
             else:
-                unsupported_count += 1
+                insufficient_evidence_count += 1
                 claim_results.append(ClaimCheckResult(
                     claim_text=claim,
-                    status=ClaimStatus.UNSUPPORTED,
+                    status=ClaimStatus.INSUFFICIENT_EVIDENCE,
                     supporting_passage_id=best_passage.passage_id if best_passage else None,
                     confidence_score=round(best_overlap, 3),
-                    rationale=f"Entity and semantic alignment insufficient ({best_overlap:.1%})"
+                    rationale=f"Insufficient local corpus evidence to ground assertion ({best_overlap:.1%} overlap). Note: absence of local evidence does not imply the assertion is false."
                 ))
 
         # Overall Status Resolution
@@ -244,7 +260,8 @@ class EvidenceVerifier:
         latency = (time.perf_counter() - start_time) * 1000.0
         notes = (
             f"Verified {len(claim_results)} claims: {supported_count} Supported, "
-            f"{contradicted_count} Contradicted, {unsupported_count} Unsupported."
+            f"{contradicted_count} Contradicted, {insufficient_evidence_count} Insufficient Evidence, "
+            f"{not_checkable_count} Not Checkable."
         )
 
         return VerificationResult(
@@ -253,7 +270,9 @@ class EvidenceVerifier:
             total_claims=len(claim_results),
             supported_claims_count=supported_count,
             contradicted_claims_count=contradicted_count,
-            unsupported_claims_count=unsupported_count + contradicted_count,
+            insufficient_evidence_claims_count=insufficient_evidence_count,
+            not_checkable_claims_count=not_checkable_count,
+            unsupported_claims_count=insufficient_evidence_count + contradicted_count,
             latency_ms=latency,
             verification_method="propositional_entity_alignment",
             summary_notes=notes,

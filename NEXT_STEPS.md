@@ -1,75 +1,59 @@
-# Next Steps: Prioritized Research & Development Roadmap
+# NEXT STEPS: Future Research Roadmap & Engineering Enhancements
 
-> **System:** Adaptive, Cost-Aware Hallucination Mitigation for Large Language Models  
-> **Horizon:** Phases 2 through 5  
-
----
-
-## 1. Prioritized Roadmap Overview
-
-```text
-Phase 1 (Completed)         Phase 2                     Phase 3                     Phase 4 / 5
-[Rule Baseline & CLI/UI] ─► [Learned Action Router]  ─► [Dense Retrieval & NLI] ─► [Large-Scale Evaluation]
-- AST Calculator            - Feature dataset           - Sentence-Transformers     - GSM8K / TriviaQA / PopQA
-- BM25 Passage Search       - Contextual Bandit / LR    - DeBERTa NLI Verifier      - Pareto Frontier Plots
-- Multi-Policy Suite        - Calibrated Utility        - Multi-turn Clarification  - Statistical Significance
-```
+> **System:** AUDI (*Adaptive Uncertainty-Driven Inference*)  
+> **Document Type:** Research & Engineering Roadmap  
+> **Status:** Active Roadmap  
 
 ---
 
-## 2. Priority 1: Calibrated Learned Policy (Phase 4 Milestone)
+## 1. Benchmark Scaling & Standard Dataset Integration
 
-- **Objective:** Replace hand-crafted heuristic rules with a trained, calibrated router that optimizes the cost-quality trade-off:
-  $$a^* = \arg\max_{a \in A} \left[ \widehat{\Delta Q}(a \mid x) - \lambda \cdot \widehat{C}(a \mid x) \right]$$
-- **Implementation Tasks:**
-  1. Record feature logs ($x$) from diverse development queries into `results/logs/runs.jsonl`.
-  2. Implement an offline training pipeline (`train_router.py`) fitting a multinomial logistic regression or gradient-boosted decision tree.
-  3. Validate probability calibration using Expected Calibration Error (ECE) and Brier scores.
-  4. Ensure zero test-set leakage: held-out test splits must not influence router parameters.
-
----
-
-## 3. Priority 2: Dense Semantic Retrieval & Small Local NLI Verifier
-
-- **Objective:** Upgrade lexical BM25 matching and token alignment to semantic representations without incurring external API costs.
-- **Implementation Tasks:**
-  1. Add optional support for `sentence-transformers` (e.g., `all-MiniLM-L6-v2`) for local bi-encoder dense passage retrieval.
-  2. Implement a local NLI verifier using a compact DeBERTa model (`deberta-v3-small`) to classify premise-hypothesis pairs as `Entailment`, `Contradiction`, or `Neutral`.
-  3. Compare BM25 vs Dense retrieval on retrieval latency and passage precision.
+1. **Large-Scale Evaluation Suites:**
+   - Integrate loaders for standard NLP hallucination and factual QA benchmarks:
+     - **TruthfulQA:** Evaluating resistance to common human misconceptions.
+     - **HaluEval:** Measuring claim-level verification on knowledge-grounded dialogues.
+     - **FEVER (Fact Extraction and VERification):** Benchmarking claim-level attribution.
+     - **GSM8K / SVAMP:** Benchmarking deterministic AST math routing versus chain-of-thought generation.
+2. **Automated Error Rubrics:**
+   - Transition from keyword-matching reference checks to standardized LLM-as-a-judge or exact-match parsing with rigorous cross-annotator agreement (Cohen's $\kappa$).
 
 ---
 
-## 4. Priority 3: Large-Scale Benchmark Suite & Pareto Analysis (Phase 5)
+## 2. Advanced Retrieval: Hybrid Dense-Lexical Indexing
 
-- **Objective:** Run comprehensive evaluations on standard public benchmarks to rigorously test the central research hypothesis.
-- **Implementation Tasks:**
-  1. Download and format standardized evaluation splits:
-     - **Factual QA:** PopQA / TriviaQA
-     - **Arithmetic & Reasoning:** GSM8K
-     - **Ambiguity:** AmbigQA
-     - **Unanswerable:** Selected unanswerable questions (e.g. SQuAD 2.0 unanswerable split)
-  2. Implement automated batch evaluation runner (`experiments/compare_baselines.py`) generating:
-     - Accuracy vs Cost Pareto frontier curves
-     - Paired bootstrap confidence intervals (95% CI)
-     - Action-selection confusion matrices
-     - Failure mode ablation tables
+1. **Vector Semantic Search:**
+   - Supplement in-memory BM25 with dense embedding retrievers (e.g., using `sentence-transformers`, `all-MiniLM-L6-v2`, or local FAISS index).
+   - Implement Reciprocal Rank Fusion (RRF) combining BM25 lexical precision with dense semantic recall.
+2. **Hierarchical Document Chunking:**
+   - Replace paragraph chunking with sliding-window sentence tokenization to improve passage relevance scoring.
 
 ---
 
-## 5. Priority 4: Multi-Turn Clarification State Machine
+## 3. Deep Natural Language Inference (NLI) Verifier
 
-- **Objective:** Enable true multi-turn clarification dialogs.
-- **Implementation Tasks:**
-  1. Implement a session context store tracking original query + clarifying question.
-  2. Ingest the user's clarifying response, merge it into an augmented query context, and re-invoke the controller to produce a grounded final answer.
-  3. Measure the net utility and user interaction cost of clarification turns.
+1. **Local NLI Cross-Encoder:**
+   - Replace lexical overlap verification with a compact local NLI model (e.g., `deberta-v3-small-tasksource-nli`).
+   - Compute authentic entailment, contradiction, and neutral probabilities:
+     - $\hat{P}(\text{Entailment}) \ge 0.70 \implies \text{SUPPORTED}$
+     - $\hat{P}(\text{Contradiction}) \ge 0.50 \implies \text{CONTRADICTED}$
+     - Otherwise $\implies \text{INSUFFICIENT\_EVIDENCE}$
 
 ---
 
-## 6. Priority 5: Local Quantized Neural Model Support (Ollama / Llama.cpp)
+## 4. Learned Cost-Aware Contextual Router
 
-- **Objective:** Enable fully offline, GPU-accelerated local neural generation.
-- **Implementation Tasks:**
-  1. Create an `OllamaProvider` connecting to a local Ollama server (`http://localhost:11434/api/generate`).
-  2. Support lightweight open-weights models (e.g., `llama3.2:3b`, `qwen2.5:3b`, `phi-3-mini`).
-  3. Extract token-level log-probabilities for true semantic entropy and uncertainty estimation.
+1. **Contextual Bandit / Gradient Boosted Policy:**
+   - Train a lightweight classifier (e.g., LightGBM or logistic regression) directly on stored experiment run logs in `results/experiments.db`.
+   - Feature space: Query length, lexical entropy, arithmetic parse confidence, BM25 top-1 score, model self-confidence.
+   - Reward formulation: $\mathcal{R}(a) = -L_{\text{quality}}(a) - \lambda \cdot C(a)$.
+2. **Pareto Frontier Optimization:**
+   - Automatically tune $\lambda$ across a continuous grid $[0.0, 2.0]$ to identify optimal operating points for low-resource vs. high-assurance deployments.
+
+---
+
+## 5. Token-Level Uncertainty with Open-Weight Models
+
+1. **Direct Logit Access via Ollama / vLLM:**
+   - When running local open-weight models (e.g. Llama-3-8B, Mistral-7B), extract token log-probabilities to compute authentic token entropy and semantic entropy:
+     $$H_{\text{token}} = -\sum_{v \in \mathcal{V}} P(v) \log P(v)$$
+   - Utilize genuine token uncertainty rather than relying solely on generated text or self-reported confidence tags.

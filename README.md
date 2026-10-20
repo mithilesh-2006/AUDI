@@ -1,11 +1,11 @@
-# Adaptive, Cost-Aware Hallucination Mitigation for Large Language Models
+# Adaptive, Cost-Aware Hallucination Mitigation for Large Language Models (AUDI)
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Tests Passing](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)](test_controller.py)
+[![Tests Passing](https://img.shields.io/badge/tests-70%20passed-brightgreen.svg)](test_controller.py)
 [![UI: Streamlit](https://img.shields.io/badge/UI-Streamlit-red.svg)](app.py)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-An inspectable, modular research prototype investigating whether **adaptive selection of hallucination-mitigation actions** improves the trade-off between response reliability and operational cost compared with uniform, high-cost pipelines.
+An inspectable, modular research prototype and evaluation benchmark investigating whether **adaptive selection of hallucination-mitigation actions** improves the trade-off between response reliability and operational cost compared with uniform, high-cost pipelines.
 
 ---
 
@@ -15,17 +15,17 @@ Language models often confabulate facts, fail at multi-step arithmetic, guess on
 
 This project implements an **adaptive decision controller** that inspects query features and uncertainty signals at inference time to choose the most cost-effective action:
 
-$$a^* = \arg\max_{a \in A} \left[ \text{EstimatedBenefit}(a \mid x) - \lambda \cdot \text{EstimatedCost}(a) \right]$$
+$$a^* = \arg\max_{a \in \mathcal{A}} \left[ \text{EstimatedBenefit}(a \mid x, u) - \lambda \cdot \text{EstimatedCost}(a) \right]$$
 
 Where:
-- $a \in A$ is a candidate mitigation action.
-- $\text{EstimatedBenefit}(a \mid x)$ represents predicted reduction in error/loss.
-- $\text{EstimatedCost}(a)$ represents the action's computational cost.
+- $a \in \mathcal{A}$ is a candidate mitigation action (`direct`, `calculate`, `retrieve`, `clarify`, `verify`, `revise`, `abstain`).
+- $\text{EstimatedBenefit}(a \mid x, u)$ represents predicted reduction in error/loss.
+- $\text{EstimatedCost}(a)$ represents the action's computational cost weight.
 - $\lambda$ controls the trade-off between factual reliability and operational expenditure.
 
 ---
 
-## 2. Architecture
+## 2. Architecture & Subsystems
 
 ```text
                                   User Query
@@ -36,7 +36,7 @@ Where:
                                        │
                                        ▼
                        Cost-Aware Router (src/controller.py)
-                  Objective: a* = argmax [Benefit(a|x) - λ * Cost(a)]
+                  Objective: a* = argmin [Loss(a|x) + λ * Cost(a)]
                                        │
          ┌───────────────┬─────────────┼──────────────┬──────────────┐
          ▼               ▼             ▼              ▼              ▼
@@ -48,8 +48,9 @@ Where:
                          │    Verification & Revision
                          │  (src/verification.py, src/revision.py)
                          │    - Propositional Decomposition
-                         │    - Contradiction Detection
-                         │    - Verbatim Quote Attribution
+                         │    - Operational Labels: SUPPORTED, CONTRADICTED,
+                         │      INSUFFICIENT_EVIDENCE, NOT_CHECKABLE
+                         │    - Numerical & Entity Contradiction Checking
                          │    - Post-Revision Re-Verification
                          │             │
                          └─────────────┼─────────────────────────────┐
@@ -61,209 +62,92 @@ Where:
                                        ▼
                           Experiment Comparison Suite
                             (src/experiment_runner.py)
-                     [Direct-only, Always-retrieve,
-                      Fixed-verify, Adaptive Policy,
-                      Calibrated Cost-Aware Policy]
+                     [Direct-only, Always-retrieve, Fixed-verify,
+                      Adaptive Policy, Learned Cost-Aware Policy]
 ```
 
 ---
 
-## 3. Candidate Actions & Mitigation Tools (Phases 1-5)
+## 3. Supported Mitigation Actions
 
-| Action | Handler | Implementation Details | Purpose | Cost Unit |
-|---|---|---|---|---|
-| **Direct** | `src/model_adapter.py` | Operational | Unassisted draft generation via pluggable adapters (Offline, OpenAI, Gemini, Ollama) | 1.0 |
-| **Calculate** | `src/calculator.py` | Operational | Sandboxed AST evaluator for deterministic arithmetic (rejects unsafe code / DoS) | 0.2 |
-| **Retrieve** | `src/retrieval.py` | Operational | BM25 lexical passage matching over local verified corpus with score gating | 3.5 |
-| **Clarify** | `src/clarification.py` | Operational | Formulates structured clarification queries and resolves multi-turn disambiguation | 1.5 |
-| **Verify** | `src/verification.py` | Operational | Decomposes answers into claims, checks numerical/entity contradictions, and attributes verbatim quotes (`SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`) | 5.0 |
-| **Revise** | `src/revision.py` | Operational | Redacts/hedges unsupported claims and runs a post-revision re-verification loop | 6.5 |
-| **Abstain** | `src/controller.py` | Operational | Refuses to guess on speculative future events, unknowable private states, or insufficient evidence | 0.4 |
-
-> **Crucial Rule:** The system **only** marks claims `Verified` when an actual evidence-based verification procedure has successfully completed. Retrieval alone is **not** verification.
+| Action | Routing Trigger / Condition | Executing Subsystem | Latency Profile | Hallucination Defense |
+| :--- | :--- | :--- | :--- | :--- |
+| **`DIRECT`** | Low uncertainty ($u < 0.25$), general definitional query, no external evidence needed. | Model Adapter | Baseline ($100 - 800\text{ ms}$) | Prevents redundant tool calls when parametric knowledge suffices. |
+| **`CALCULATE`** | Parseable arithmetic syntax detected ($x_{\text{arithmetic}} = 1$). | Safe AST Calculator (`src/calculator.py`) | $\mathbf{\sim 0.2 - 1.4\text{ ms}}$ ($\mathbf{200\times - 500\times\text{ faster}}$) | Completely eliminates numerical and algebraic hallucinations with exact AST evaluation. |
+| **`RETRIEVE`** | Factual inquiry requiring local reference corpus evidence ($x_{\text{factual}} = 1, u \ge 0.35$). | BM25 Retriever (`src/retrieval.py`) | Baseline $+ 15 - 30\text{ ms}$ | Grounds answer generation in authoritative passages. |
+| **`CLARIFY`** | Missing context, bare comparative, or ambiguous pronoun ($x_{\text{ambiguity}} = 1$). | Clarification Handler (`src/clarification.py`) | $\mathbf{\sim 0.4 - 1.5\text{ ms}}$ | Prevents premature ungrounded guessing on under-specified inputs. |
+| **`VERIFY`** | High-stakes factual query requiring claim alignment checking. | Evidence Verifier (`src/verification.py`) | Baseline $+ 25 - 60\text{ ms}$ (Grounding Investment) | Decomposes claims into atomic propositions and checks support/contradiction. |
+| **`REVISE`** | One or more claims contradicted or unsupported by corpus. | Answer Reviser (`src/revision.py`) | Baseline $+ 30 - 70\text{ ms}$ | Edits, hedges, or removes unsupported claims automatically. |
+| **`ABSTAIN`** | Inherently unknowable event, future speculation, or missing evidence. | Controller Policy (`src/policy.py`) | $\mathbf{\sim 0.3 - 1.2\text{ ms}}$ ($\mathbf{300\times - 400\times\text{ faster}}$) | Halts execution immediately, refusing to generate confabulated claims. |
 
 ---
 
-## 4. Technology Stack
+## 4. Setup and Quickstart
 
-- **Language:** Python 3.10+
-- **Frontend Dashboard:** Streamlit (`app.py`) with clean white minimalist theme (zero emojis)
-- **Backend Core:** Modular Python services (`src/`)
-- **Arithmetic Safety:** Python `ast` Visitor (zero `eval()`)
-- **Retrieval Engine:** Lexical BM25 passage matching with threshold gating (`src/retrieval.py`)
-- **Clarification:** Structured clarification engine and multi-turn state resolution (`src/clarification.py`)
-- **Verification:** Propositional claim decomposition with contradiction detection and verbatim quote attribution (`src/verification.py`)
-- **Revision:** Automated hedging/redaction with post-revision re-verification loop (`src/revision.py`)
-- **Uncertainty Estimation:** Multi-sample semantic disagreement, Jaccard distance, and token entropy (`src/uncertainty.py`)
-- **Calibration Engine:** Expected Calibration Error (ECE), Brier score, temperature scaling, and zero-leakage dataset partitioner (`src/calibration.py`)
-- **Cost-Sensitive Decision Policy:** Calibrated quality loss vs cost penalty optimization (`src/policy.py`)
-- **Scientific Evaluation:** 5-policy benchmark runner, action confusion matrices, routing mistake categorization, and component ablations (`src/experiment_runner.py`)
-- **LLM Integration:** Pluggable adapter (`OfflineLocalAdapter`, `OpenAIAdapter`, `GeminiAdapter`, `OllamaAdapter`) with prompt versioning
-- **Experiment Storage:** SQLite (`results/experiments.db`) and JSONL (`results/logs/runs.jsonl`)
-- **Test Framework:** Python `unittest` (66 tests passing)
+### Prerequisites
+- Python 3.10 or higher.
+- Works 100% locally in offline mode without requiring paid API keys.
 
----
-
-## 5. Quick Start Guide
-
-### 5.1 Installation
-Clone or navigate to the repository directory and install dependencies:
-
+### Installation
 ```bash
+# Clone the repository
 git clone https://github.com/your-username/Adaptive-Uncertainty-Driven-Inference.git
 cd Adaptive-Uncertainty-Driven-Inference
 
-# (Recommended) Activate virtual environment
-python -m venv venv
-venv\Scripts\activate  # On Windows
-# source venv/bin/activate  # On Linux/macOS
-
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 5.2 Option A: Launch Interactive Streamlit Web Application
-To launch the research dashboard in your browser:
+### Optional API Configuration
+Copy `.env.example` to `.env` to configure remote LLM providers:
+```bash
+cp .env.example .env
+```
+Edit `.env` to supply optional credentials (`OPENAI_API_KEY` or `GEMINI_API_KEY`). If omitted, AUDI defaults to the zero-cost local offline provider.
 
+---
+
+## 5. Usage
+
+### Interactive Research Dashboard (Streamlit)
 ```bash
 streamlit run app.py
 ```
+Open `http://localhost:8501` to access the 5 research workspaces:
+1. **Interactive Query Analyzer:** Real-time query execution, badge indicators, latency benchmark profile cards, and decision rationale.
+2. **Multi-Policy Benchmark Suite:** 5-policy comparative evaluation, Execution Latency Profiler, action confusion matrices, mistake analysis, and ablation runs.
+3. **Statistical Uncertainty & Calibration:** Empirical Platt calibration curve visualizer, Brier score reporting, and Expected Calibration Error (ECE).
+4. **Local Knowledge Corpus:** Searchable BM25 passage viewer with live document addition.
+5. **Experiment Logs & Export:** Inspectable SQLite execution logs with one-click CSV export.
 
-The web dashboard provides:
-1. **Interactive Query Analyzer:** Real-time action decision badge, rationale inspector, candidate action utility table, and answer display.
-2. **Evidence & Verification Inspector:** Passage citations and claim-level verification badges.
-3. **Cost & Accounting Panel:** Latency, tokens, tool invocations, and estimated vs measured costs.
-4. **Multi-Policy Benchmark Suite:** Runs 4 policies (`Direct-Only`, `Always-Retrieve`, `Fixed-Verify`, `Adaptive`) on identical benchmark examples and computes comparative accuracy, support, and cost.
-5. **Knowledge Corpus Explorer:** Browse indexed documents and add new documents dynamically.
-6. **Logging & Export:** Inspect previous runs and download logs as CSV or JSON.
-
-### 5.3 Option B: Run Command-Line Interface (CLI)
-
+### Command-Line Interface (CLI)
 ```bash
-# Run demonstration suite across candidate actions
-python controller.py --demo
-
-# Run single query
+# Deterministic arithmetic
 python controller.py --query "Calculate (120 + 45) / 5"
+
+# Ambiguity clarification
 python controller.py --query "Which one is better?"
-python controller.py --query "What is the elevation of Mount Everest?"
+
+# Factual retrieval and verification
+python controller.py --query "What is the elevation of Mount Everest according to the 2020 survey?"
+
+# Future speculation abstention
 python controller.py --query "Will Bitcoin hit $500,000 in 2035?"
-
-# Interactive REPL session
-python controller.py
 ```
 
----
-
-## 6. Optional Remote LLM API Setup
-
-The prototype **runs 100% locally in Offline Demonstration Mode** without any API keys or paid accounts.
-
-To optionally connect live neural models:
-1. Copy `.env.example` to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-2. Configure your API key:
-   - For **OpenAI**: Set `LLM_PROVIDER=openai` and `OPENAI_API_KEY=sk-...`
-   - For **Google Gemini**: Set `LLM_PROVIDER=gemini` and `GEMINI_API_KEY=AIza...`
-3. Restart the application or CLI.
-
-*Note: If no API key is provided, the prototype gracefully runs in local mode. API keys are never hardcoded, exposed in the UI, or logged.*
-
----
-
-## 7. Running Automated Tests
-
-Run the complete 36-test automated test suite:
-
+### Running Unit & Integration Tests
 ```bash
-# Run via test_controller.py
 python test_controller.py
-
-# Or run via unittest discovery
-python -m unittest -v
 ```
-
-### Test Coverage Highlights:
-- **`tests/test_calculator.py`:** Correct arithmetic operations, division by zero, DOS large exponent rejection, and strict security rejection of arbitrary code, imports, variables, and builtins.
-- **`tests/test_signals.py`:** Observable query cues, arithmetic detection, ambiguity cues, factual triggers, and unanswerability detection.
-- **`tests/test_retrieval.py`:** Matching passage retrieval, non-matching queries, threshold gating, and dynamic document addition.
-- **`tests/test_verification_revision.py`:** Claim decomposition, status assignment (`Verified`, `Partially Supported`, `Unsupported`), and text revision.
-- **`tests/test_controller_routing.py`:** Full routing branch coverage (`calculate`, `clarify`, `abstain`, `retrieve`, `direct`) and baseline policy overrides.
-- **`tests/test_llm_provider.py`:** Offline local provider, missing API key handling, and API timeout/error handling.
-- **`tests/test_cost_accounting.py`:** Cost accounting accuracy, SQLite/JSONL persistence, and CSV/JSON export.
-- **`tests/test_experiment_runner.py`:** Multi-policy benchmark execution across identical inputs.
+Executes all 70 tests across the 12 test modules.
 
 ---
 
-## 8. Repository Layout
+## 6. Research Documentation Directory
 
-```text
-Adaptive-Uncertainty-Driven-Inference/
-├── PROJECT_DESCRIPTION.md     # Primary research specification & objectives
-├── IMPLEMENTATION_PLAN.md     # Engineering plan mapping requirements to code
-├── LIMITATIONS.md             # Known limitations and research boundaries
-├── NEXT_STEPS.md              # Prioritized research & development roadmap
-├── README.md                  # System documentation & quickstart
-├── requirements.txt           # Python dependency manifest
-├── .env.example               # Template environment configuration
-├── .gitignore                 # Exclusion rules for secrets, caches, and logs
-├── controller.py              # Root CLI entrypoint and interactive interface
-├── test_controller.py         # Root test runner
-├── app.py                     # Streamlit web application
-├── src/                       # Modular application source
-│   ├── __init__.py
-│   ├── signals.py             # Feature & uncertainty signal extraction
-│   ├── calculator.py          # Restricted AST-based safe math evaluator
-│   ├── retrieval.py           # BM25 lexical evidence retriever
-│   ├── verification.py        # Propositional claim verifier
-│   ├── revision.py            # Answer reviser
-│   ├── cost_tracker.py        # Operational resource and cost accounting
-│   ├── llm_provider.py        # Multi-provider adapter (Offline/OpenAI/Gemini)
-│   ├── logging_service.py     # SQLite and JSONL persistence service
-│   ├── policy.py              # Cost-aware & baseline routing policies
-│   ├── controller.py          # Main orchestration controller
-│   └── experiment_runner.py   # Baseline evaluation runner
-├── data/                      # Data assets
-│   ├── corpus/                # Local verified document corpus
-│   │   └── knowledge_base.json
-│   └── benchmarks/            # Benchmark evaluation queries
-│       └── evaluation_set.json
-├── tests/                     # Automated unit and integration test suite
-│   ├── test_calculator.py
-│   ├── test_signals.py
-│   ├── test_retrieval.py
-│   ├── test_verification_revision.py
-│   ├── test_controller_routing.py
-│   ├── test_llm_provider.py
-│   ├── test_cost_accounting.py
-│   └── test_experiment_runner.py
-└── results/                   # Generated experiment logs and database
-    ├── experiments.db         # SQLite persistent database
-    └── logs/
-        └── runs.jsonl         # Append-only JSONL run logs
-```
-
----
-
-## 9. Cost Accounting & Metric Definitions
-
-The system maintains a strict separation between:
-1. **Estimated Prior Action Cost Units ($C_{\text{prior}}$):** Dimensionless heuristic decision weights used by the router:
-   - `calculate = 0.2`, `abstain = 0.4`, `direct = 1.0`, `clarify = 1.5`, `retrieve = 3.5`, `verify = 5.0`, `revise = 6.5`
-2. **Measured Runtime Resources:**
-   - **Latency (ms):** Measured wall-clock time from query arrival to final response.
-   - **Tokens:** Actual input and output tokens consumed.
-   - **Tool Invocations:** Count of calculator, retrieval, or verification operations.
-   - **Monetary Cost ($ USD):** Computed from provider pricing tables ($0.0 for local offline mode).
-
----
-
-## 10. Research Disclaimer & Limitations
-
-- **No Universal Detection:** Rule-based heuristics cannot detect every subtle hallucination or determine the true underlying cause of an error.
-- **Corpus Boundaries:** A missing passage in the local corpus does **not** prove that a claim is universally false.
-- **Prior Utility:** Action utility weights are currently initial domain heuristics; they are not yet trained on large empirical reward datasets.
-- For complete details, see [`LIMITATIONS.md`](LIMITATIONS.md) and [`NEXT_STEPS.md`](NEXT_STEPS.md).
-#   A U D I  
- 
+- [`PROJECT_DESCRIPTION.md`](PROJECT_DESCRIPTION.md): Comprehensive system specification and architecture.
+- [`AUDIT_REPORT.md`](AUDIT_REPORT.md): Codebase inspection findings and prioritized improvements.
+- [`RESEARCH_METHODOLOGY.md`](RESEARCH_METHODOLOGY.md): Scientific experimental design, loss formulations, and metrics.
+- [`LIMITATIONS.md`](LIMITATIONS.md): Documented technical, scientific, and empirical limitations.
+- [`NEXT_STEPS.md`](NEXT_STEPS.md): Future research and engineering roadmap.
+- [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md): Phased engineering milestones and verification criteria.

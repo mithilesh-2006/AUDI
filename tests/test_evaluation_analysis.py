@@ -83,6 +83,21 @@ class TestEvaluationAnalysisPhase5(unittest.TestCase):
         # Number of queries should equal test split size
         self.assertGreater(len(res["detailed_df"]), 0)
 
+    def test_abstention_precision_recall_metrics(self):
+        """Test that abstention precision, recall, and false abstention rate are computed."""
+        res = self.runner.run_benchmark(
+            policies=[PolicyType.ADAPTIVE.value, PolicyType.DIRECT_ONLY.value],
+            tradeoff_lambda=0.5,
+        )
+        summary_df = res["summary_df"]
+        self.assertIn("Abstention Precision", summary_df.columns)
+        self.assertIn("Abstention Recall", summary_df.columns)
+        self.assertIn("False Abstention Rate", summary_df.columns)
+        # Verify raw summaries have typed values
+        adaptive_sum = res["raw_summaries"][0]
+        self.assertGreaterEqual(adaptive_sum.abstention_precision, 0.0)
+        self.assertGreaterEqual(adaptive_sum.abstention_recall, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

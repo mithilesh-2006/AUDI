@@ -1,66 +1,60 @@
-# Known Limitations and Research Boundaries
+# LIMITATIONS: Known Technical, Scientific, and Empirical Constraints
 
-> **Document:** Known Limitations of the Baseline Research Prototype  
-> **System:** Adaptive, Cost-Aware Hallucination Mitigation for Large Language Models  
-> **Phase:** 1+ Runnable Baseline Prototype  
-
----
-
-## 1. Action Routing & Uncertainty Signal Limitations
-
-### 1.1 Heuristic Cue Overlap
-- The controller uses observable syntactic, lexical, and pattern-matching cues to detect ambiguity, arithmetic, factual inquiries, and speculation.
-- **Limitation:** Simple heuristics cannot reliably detect subtle semantic ambiguity, multi-step logical reasoning flaws, or disguised hallucinations. False positives and false negatives will occur on complex phrasing.
-- **Boundary:** Hand-written rules do not constitute a general-purpose or scientifically validated hallucination detector.
-
-### 1.2 Model Confidence and Uncertainty Proxies
-- Model-reported self-confidence or heuristic priors are imperfect proxies for factual correctness.
-- Language models can be consistently wrong with high confidence ("fluent confabulation").
-- Token log-probabilities (when available from remote APIs) measure continuation likelihood, not real-world truth.
+> **System:** AUDI (*Adaptive Uncertainty-Driven Inference*)  
+> **Document Type:** Scientific Limitations & Integrity Disclosure  
+> **Status:** Active Reference Document  
 
 ---
 
-## 2. Evidence Retrieval & Verification Limitations
+## 1. Routing Limitations & Signal Approximations
 
-### 2.1 Lexical BM25 Retrieval
-- The current local retrieval engine employs lexical BM25 passage matching over the controlled corpus.
-- **Limitation:** It lacks deep semantic embedding similarity (e.g. dense bi-encoders) and may fail when queries use synonyms or paraphrased terms not present in the indexed text.
-
-### 2.2 Corpus Coverage & Negative Evidence
-- The local corpus is intentionally controlled and compact (containing sample verified documents on geography, physics, history, and computer science).
-- **Critical Principle:** A missing passage in the local corpus does **NOT** prove that a user statement is universally false or unknowable. It only indicates that the system lacks authoritative local grounding.
-
-### 2.3 Verification & Natural Language Inference (NLI)
-- Claim verification uses token alignment and numerical entity ground checking against retrieved evidence.
-- While effective at catching unsupported years, dates, quantities, and missing entities, it is not a full formal logic solver or fine-tuned NLI model. Subtle contradictions or entailments may be missed.
+1. **Heuristic & Lexical Sensitivity:**
+   - The rule-based controller relies on surface linguistic cues, AST parseability, and keyword markers. Complex, metaphoric, or adversarial queries may cause misrouting (e.g., phrasing an arithmetic question in elaborate prose that bypasses regex extraction).
+2. **Context-Free Parsing:**
+   - The signal extractor evaluates individual queries in isolation. Complex conversational references spanning long prior dialogues may not be fully resolved by isolated turn extractors.
+3. **Discrete Action Gating:**
+   - The current action space $\mathcal{A}$ selects a primary mitigation action rather than learning a dynamic sequence of interleaved actions for multi-step reasoning.
 
 ---
 
-## 3. Answer Generation & Model Adapters
+## 2. Uncertainty Estimation & Calibration Constraints
 
-### 3.1 Local Demonstration Mode vs Live Remote API
-- By default, the prototype runs 100% locally in **Offline Demonstration Mode** without requiring external credentials or paid accounts.
-- The local provider returns grounded answers using extracted evidence and rule-based generation templates.
-- Full generative fluency on arbitrary topics requires setting `OPENAI_API_KEY` or `GEMINI_API_KEY` in `.env`.
-
-### 3.2 Single-Turn Clarification
-- The clarification action formulates structured follow-up questions to resolve missing context.
-- Full multi-turn conversational dialogue state tracking and user response re-injection are planned for Phase 3+.
+1. **Uncalibrated Model Self-Confidence:**
+   - When using live LLM providers, self-reported confidence tags (e.g., `[CONFIDENCE: 0.85]`) are notoriously prone to overconfidence and sycophancy. They must be treated strictly as uncalibrated features rather than actual error probabilities.
+2. **Failure Modes of Disagreement:**
+   - Multi-sample semantic consistency and lexical disagreement assume that model errors exhibit high variance across temperature samples. For deeply ingrained training biases or common misconceptions (e.g., claiming Einstein won the Nobel Prize for Relativity), multiple model generations can unanimously agree on a falsehood (zero disagreement, yet 100% hallucinated).
+3. **Platt / Temperature Calibration Sample Size:**
+   - Fitting temperature parameter $T$ requires a statistically representative development set ($N \ge 100$). Fitting on small sample sets ($N < 50$) risks over-fitting the temperature parameter.
 
 ---
 
-## 4. Cost Optimization & Utility Formulation
+## 3. Evidence Retrieval & Local Corpus Boundaries
 
-### 4.1 Cost Units vs Currency
-- The routing objective optimizes:
-  $$a^* = \arg\max_a [\text{Benefit}(a \mid x) - \lambda \cdot \text{Cost}(a)]$$
-- The prior action costs are dimensionless illustrative weights (e.g. calculate=0.2, direct=1.0, retrieve=3.5, verify=5.0).
-- Actual monetary costs are computed strictly based on provider token rates ($0.0 for local mode).
-- Benefit estimation is currently heuristic; it has not yet been fitted on a large offline dataset via regression or bandit learning.
+1. **Corpus Completeness:**
+   - The prototype evaluates against a curated local document corpus (`data/corpus/knowledge_base.json`). It cannot answer factual inquiries outside this collection.
+2. **Epistemic Scope:**
+   - An absence of local evidence is classified as `INSUFFICIENT_EVIDENCE`. Researchers must not infer that a claim is universally false merely because it does not appear in the local store.
+3. **Lexical BM25 Limitations:**
+   - BM25 relies on exact term overlap and inverse document frequency. It lacks dense semantic embeddings and cannot resolve complex synonymy or cross-lingual queries without dense retrieval extensions.
 
 ---
 
-## 5. Benchmark Scope
+## 4. Claim Decomposition & Verification Limitations
 
-- The built-in benchmark dataset contains 12 curated examples across Arithmetic, Factual QA, Ambiguity, and Speculation.
-- While ideal for immediate test execution and sanity checks, claims of statistical superiority or generalizability must await large-scale evaluations on public benchmarks (TriviaQA, PopQA, GSM8K, AmbigQA).
+1. **Syntactic Claim Decomposition:**
+   - Sentence splitting regexes approximate propositional assertions. Compound sentences with multiple dependent clauses may occasionally be checked as single composite units.
+2. **Lexical Alignment vs. Deep Natural Language Inference (NLI):**
+   - The verifier employs token overlap, entity extraction, and numerical contradiction checks. While effective at catching incorrect dates, elevations, and measurements, it does not perform deep deductive reasoning or multi-hop logical inference.
+3. **Attribution Hallucination Risk:**
+   - When verbatim quotes are extracted, the system relies on exact substring matching. Verifiers that summarize evidence rather than quoting verbatim risk compounding hallucination.
+
+---
+
+## 5. Experimental Scale & Evaluation Constraints
+
+1. **Preliminary Benchmark Scale:**
+   - The current curated evaluation benchmark contains 24 versioned items across 8 archetypes. While sufficient for unit testing, reproducible development, and methodology demonstration, broader claims of generalization require evaluation across large public benchmarks (e.g., TruthfulQA, HaluEval, FEVER, GSM8K).
+2. **Offline Mock Adapter Disclaimers:**
+   - The offline local adapter (`src/model_adapter.py`) uses deterministic regex templates. It is provided strictly as a zero-cost software-testing tool. Mock performance must **never** be cited as empirical evidence of real LLM behavior.
+3. **Latency and Cost Variance in Production:**
+   - Latency figures recorded in local offline runs reflect Python execution speed. When connecting to paid remote APIs (OpenAI, Gemini), network latency, server queuing, and rate limits will introduce significant variance into measured wall-clock times.

@@ -4,41 +4,98 @@
     "title": "Mount Everest Elevation and Geography",
     "source": "National Geographic Society / Survey of Nepal 2020",
     "text": "Mount Everest is Earth's highest mountain above sea level, located in the Mahalangur Himal sub-range of the Himalayas. The official elevation of Mount Everest was jointly revised and announced by Nepal and China in December 2020 as 8,848.86 meters (29,031.7 feet).",
-    "metadata": {}
+    "metadata": {
+      "topic": "geography",
+      "timestamp": "2020-12-08",
+      "authoritative": true
+    }
   },
   {
     "doc_id": "doc_sci_light",
     "title": "Speed of Light in Vacuum",
     "source": "CODATA Recommended Values of the Fundamental Physical Constants (2018)",
     "text": "The speed of light in vacuum, commonly denoted c, is a universal physical constant. Its exact value is defined as 299,792,458 meters per second (approximately 300,000 km/s or 186,282 miles per second).",
-    "metadata": {}
+    "metadata": {
+      "topic": "physics",
+      "timestamp": "2018-05-20",
+      "authoritative": true
+    }
   },
   {
     "doc_id": "doc_hist_apollo11",
     "title": "Apollo 11 Moon Landing Mission",
     "source": "NASA Mission Archives - Apollo 11 (1969)",
     "text": "Apollo 11 was the American spaceflight that first landed humans on the Moon. Commander Neil Armstrong and Lunar Module Pilot Buzz Aldrin landed the Apollo Lunar Module Eagle on July 20, 1969, at 20:17 UTC. Neil Armstrong became the first person to step onto the lunar surface six hours and 39 minutes later on July 21 at 02:56 UTC.",
-    "metadata": {}
+    "metadata": {
+      "topic": "history",
+      "timestamp": "1969-07-20",
+      "authoritative": true
+    }
   },
   {
     "doc_id": "doc_tech_turing",
     "title": "Alan Turing and the Turing Machine",
     "source": "Stanford Encyclopedia of Philosophy - Alan Turing",
     "text": "Alan Mathison Turing (1912–1954) was an English mathematician, computer scientist, logician, cryptanalyst, and theoretical biologist. In 1936, Turing introduced the concept of the universal machine, now known as the Turing Machine, which formed the theoretical foundation of modern computer science.",
-    "metadata": {}
+    "metadata": {
+      "topic": "computer_science",
+      "timestamp": "2019-01-15",
+      "authoritative": true
+    }
   },
   {
     "doc_id": "doc_ai_rag",
     "title": "Retrieval-Augmented Generation (RAG) Architecture",
     "source": "Lewis et al., NeurIPS 2020: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
     "text": "Retrieval-Augmented Generation (RAG) combines pre-trained parametric language models with non-parametric retrieval memory. RAG fetches relevant document passages from an external corpus conditioned on the input query before generating the target response, reducing hallucinations in knowledge-intensive tasks.",
-    "metadata": {}
+    "metadata": {
+      "topic": "artificial_intelligence",
+      "timestamp": "2020-12-01",
+      "authoritative": true
+    }
   },
   {
     "doc_id": "doc_nobel_einstein",
     "title": "Albert Einstein Nobel Prize Award",
     "source": "The Nobel Prize in Physics 1921 Official Citation",
     "text": "The Nobel Prize in Physics 1921 was awarded to Albert Einstein for his services to Theoretical Physics, and especially for his discovery of the law of the photoelectric effect, rather than for his theory of relativity.",
-    "metadata": {}
+    "metadata": {
+      "topic": "physics_history",
+      "timestamp": "1922-11-09",
+      "authoritative": true
+    }
+  },
+  {
+    "doc_id": "doc_space_jwst",
+    "title": "James Webb Space Telescope Launch and Orbit",
+    "source": "NASA Goddard Space Flight Center - JWST Mission Status (2022)",
+    "text": "The James Webb Space Telescope (JWST) was launched on December 25, 2021, aboard an Ariane 5 rocket from Kourou, French Guiana. It operates in a halo orbit around the Sun-Earth Lagrange point L2, approximately 1.5 million kilometers (930,000 miles) from Earth.",
+    "metadata": {
+      "topic": "astronomy",
+      "timestamp": "2022-01-24",
+      "authoritative": true
+    }
+  },
+  {
+    "doc_id": "doc_comp_python",
+    "title": "History of Python Programming Language",
+    "source": "Python Software Foundation - General Python FAQ",
+    "text": "Python was conceived in the late 1980s by Guido van Rossum at Centrum Wiskunde & Informatica (CWI) in the Netherlands as a successor to the ABC programming language. Python was first released in February 1991 as version 0.9.0.",
+    "metadata": {
+      "topic": "software_engineering",
+      "timestamp": "2021-08-10",
+      "authoritative": true
+    }
+  },
+  {
+    "doc_id": "doc_distractor_einstein",
+    "title": "Albert Einstein and the Theory of Relativity",
+    "source": "Institute for Advanced Study Archives",
+    "text": "Albert Einstein published his paper on Special Relativity in 1905 and completed General Relativity in 1915. Although relativity revolutionized modern physics, it was controversial at the time and was deliberately omitted from his 1921 Nobel Prize citation.",
+    "metadata": {
+      "topic": "distractor_context",
+      "timestamp": "2020-05-12",
+      "authoritative": true
+    }
   }
 ]

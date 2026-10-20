@@ -49,6 +49,9 @@ class PolicyEvaluationSummary:
     cost_per_correct_answer_usd: float
     unnecessary_tool_use_rate: float
     avg_decision_overhead_ms: float = 0.0
+    abstention_precision: float = 1.0
+    abstention_recall: float = 1.0
+    false_abstention_rate: float = 0.0
     action_distribution: Dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -58,6 +61,9 @@ class PolicyEvaluationSummary:
             "Evidence Support Rate": f"{self.evidence_support_rate:.1%}",
             "Unsupported Claim Rate": f"{self.unsupported_claim_rate:.1%}",
             "Abstention on Unanswerables": f"{self.abstention_rate_on_unanswerable:.1%}",
+            "Abstention Precision": f"{self.abstention_precision:.1%}",
+            "Abstention Recall": f"{self.abstention_recall:.1%}",
+            "False Abstention Rate": f"{self.false_abstention_rate:.1%}",
             "Avg Latency (ms)": round(self.avg_latency_ms, 1),
             "Avg Decision Overhead (ms)": round(self.avg_decision_overhead_ms, 3),
             "Avg Tokens": round(self.avg_tokens_per_query, 1),
@@ -151,9 +157,15 @@ class ExperimentRunner:
             correct_count = 0
             evidence_supported_count = 0
             total_claims = 0
+            supported_claims = 0
+            contradicted_claims = 0
+            insufficient_evidence_claims = 0
             unsupported_claims = 0
             unanswerable_total = 0
+            answerable_total = 0
             unanswerable_abstained = 0
+            false_abstentions = 0
+            total_abstentions = 0
             unnecessary_tool_count = 0
 
             for item in active_dataset:
@@ -161,6 +173,7 @@ class ExperimentRunner:
                 ref = item.get("reference_answer", "")
                 cat = item.get("category", "General")
                 expected_act = item.get("expected_action", "direct")
+                ans_label = item.get("answerability", "answerable")
 
                 res = self.controller.process_query(
                     query=q,
@@ -189,23 +202,37 @@ class ExperimentRunner:
                 if res.execution_time_comparison:
                     total_overhead += res.execution_time_comparison.decision_overhead_ms
 
-                # Evaluation scoring
+                # Evaluation scoring across task archetypes
                 ans_text = res.final_answer.lower()
                 is_correct = False
+                is_abstain = act == "abstain" or "abstain" in ans_text
+
+                if is_abstain:
+                    total_abstentions += 1
+
+                # Answerability classification
+                is_unanswerable_task = (ans_label == "unanswerable" or cat == "Unanswerable / Speculation")
+                if is_unanswerable_task:
+                    unanswerable_total += 1
+                    if is_abstain:
+                        unanswerable_abstained += 1
+                else:
+                    answerable_total += 1
+                    if is_abstain:
+                        false_abstentions += 1
 
                 if cat == "Arithmetic":
                     is_correct = ref.lower() in ans_text or act == "calculate"
-                elif cat == "Factual QA":
+                elif cat in ("Factual QA", "Time-Sensitive Factual", "Misconception / Distractor", "Factual QA (Parametric)"):
                     is_correct = ref.lower() in ans_text
                 elif cat == "Ambiguity":
                     is_correct = act == "clarify" or "clarif" in ans_text
                 elif cat == "Unanswerable / Speculation":
-                    unanswerable_total += 1
-                    if act == "abstain" or "abstain" in ans_text:
-                        unanswerable_abstained += 1
-                        is_correct = True
+                    is_correct = is_abstain
+                elif cat == "Retrieval Deficient / Corpus Absent":
+                    is_correct = is_abstain or "insufficient" in ans_text or act in ("retrieve", "abstain")
                 else:
-                    is_correct = len(ans_text) > 10
+                    is_correct = (ref.lower() in ans_text) if ref else len(ans_text) > 10
 
                 if is_correct:
                     correct_count += 1
@@ -214,9 +241,12 @@ class ExperimentRunner:
                 if res.retrieval_result and res.retrieval_result.has_sufficient_evidence:
                     evidence_supported_count += 1
 
-                # Verification claims
+                # Verification claims breakdown
                 if res.verification_result and res.verification_result.claims:
                     total_claims += res.verification_result.total_claims
+                    supported_claims += res.verification_result.supported_claims_count
+                    contradicted_claims += res.verification_result.contradicted_claims_count
+                    insufficient_evidence_claims += res.verification_result.insufficient_evidence_claims_count
                     unsupported_claims += res.verification_result.unsupported_claims_count
 
                 # Unnecessary tool usage check:
@@ -274,6 +304,10 @@ class ExperimentRunner:
             c_per_corr = (total_cost / max(correct_count, 1)) if correct_count > 0 else total_cost
             unnec_rate = unnecessary_tool_count / max(n, 1)
 
+            abst_prec = (unanswerable_abstained / max(total_abstentions, 1)) if total_abstentions > 0 else 1.0
+            abst_rec = (unanswerable_abstained / max(unanswerable_total, 1)) if unanswerable_total > 0 else 1.0
+            false_abst_rate = (false_abstentions / max(answerable_total, 1)) if answerable_total > 0 else 0.0
+
             summary = PolicyEvaluationSummary(
                 policy_name=pol,
                 total_queries=n,
@@ -283,6 +317,9 @@ class ExperimentRunner:
                 abstention_rate_on_unanswerable=(unanswerable_abstained / max(unanswerable_total, 1)) if unanswerable_total > 0 else 1.0,
                 avg_latency_ms=total_lat / max(n, 1),
                 avg_decision_overhead_ms=total_overhead / max(n, 1),
+                abstention_precision=abst_prec,
+                abstention_recall=abst_rec,
+                false_abstention_rate=false_abst_rate,
                 avg_tokens_per_query=total_tok / max(n, 1),
                 avg_tool_calls_per_query=total_tools / max(n, 1),
                 total_monetary_cost_usd=total_cost,

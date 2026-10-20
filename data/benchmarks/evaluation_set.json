@@ -2,97 +2,408 @@
   {
     "id": "bench_math_01",
     "category": "Arithmetic",
+    "answerability": "answerable",
     "query": "Calculate (120 + 45) / 5",
     "reference_answer": "33",
+    "evaluation_rubric": "Exact mathematical evaluation of (165) / 5 = 33.",
     "expected_action": "calculate",
-    "description": "Deterministic arithmetic expression"
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "(120 + 45) / 5 equals 33"
+    ],
+    "split": "dev",
+    "provenance": "synthetic_arithmetic_benchmark",
+    "notes": "Compound binary operations testing AST precedence."
   },
   {
     "id": "bench_math_02",
     "category": "Arithmetic",
+    "answerability": "answerable",
     "query": "What is 14 * 25?",
     "reference_answer": "350",
+    "evaluation_rubric": "Exact multiplication: 14 * 25 = 350.",
     "expected_action": "calculate",
-    "description": "Multiplication query"
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "14 multiplied by 25 is 350"
+    ],
+    "split": "dev",
+    "provenance": "synthetic_arithmetic_benchmark",
+    "notes": "Two-digit multiplication."
   },
   {
     "id": "bench_math_03",
     "category": "Arithmetic",
+    "answerability": "answerable",
     "query": "Compute 2 ^ 8",
     "reference_answer": "256",
+    "evaluation_rubric": "Exact exponentiation: 2^8 = 256.",
     "expected_action": "calculate",
-    "description": "Exponentiation query"
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "2 raised to the power 8 is 256"
+    ],
+    "split": "test",
+    "provenance": "synthetic_arithmetic_benchmark",
+    "notes": "Power operator syntax."
+  },
+  {
+    "id": "bench_math_04",
+    "category": "Arithmetic",
+    "answerability": "answerable",
+    "query": "Calculate 500 - (35 * 4)",
+    "reference_answer": "360",
+    "evaluation_rubric": "Order of operations: 500 - 140 = 360.",
+    "expected_action": "calculate",
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "500 minus 140 equals 360"
+    ],
+    "split": "test",
+    "provenance": "synthetic_arithmetic_benchmark",
+    "notes": "Parenthetical operator precedence."
   },
   {
     "id": "bench_fact_01",
     "category": "Factual QA",
+    "answerability": "answerable",
     "query": "What is the elevation of Mount Everest according to the 2020 survey?",
     "reference_answer": "8,848.86",
+    "evaluation_rubric": "Must state 8,848.86 meters (or 29,031.7 feet) established jointly by Nepal and China in Dec 2020.",
     "expected_action": "retrieve",
-    "description": "Factual query requiring precise elevation evidence"
+    "evidence_doc_ids": [
+      "doc_geo_everest"
+    ],
+    "claim_annotations": [
+      "Mount Everest official revised elevation is 8,848.86 meters",
+      "Announced in December 2020 jointly by Nepal and China"
+    ],
+    "split": "dev",
+    "provenance": "historical_geographical_survey",
+    "notes": "Requires specific 2020 measurement rather than historical 8,848m estimate."
   },
   {
     "id": "bench_fact_02",
     "category": "Factual QA",
+    "answerability": "answerable",
     "query": "What is the exact speed of light in vacuum?",
     "reference_answer": "299,792,458",
+    "evaluation_rubric": "Must state exact constant 299,792,458 m/s.",
     "expected_action": "retrieve",
-    "description": "Universal physical constant inquiry"
+    "evidence_doc_ids": [
+      "doc_sci_light"
+    ],
+    "claim_annotations": [
+      "Speed of light in vacuum is defined as 299,792,458 meters per second"
+    ],
+    "split": "dev",
+    "provenance": "codata_standard_constants",
+    "notes": "Exact physical definition."
   },
   {
     "id": "bench_fact_03",
     "category": "Factual QA",
+    "answerability": "answerable",
     "query": "When did Apollo 11 land on the Moon?",
     "reference_answer": "July 20, 1969",
+    "evaluation_rubric": "Must state July 20, 1969 (or July 21 UTC for Armstrong first step).",
     "expected_action": "retrieve",
-    "description": "Historical date inquiry"
+    "evidence_doc_ids": [
+      "doc_hist_apollo11"
+    ],
+    "claim_annotations": [
+      "Apollo 11 Lunar Module landed on the Moon on July 20, 1969"
+    ],
+    "split": "test",
+    "provenance": "nasa_historical_records",
+    "notes": "Historical mission date inquiry."
   },
   {
     "id": "bench_fact_04",
     "category": "Factual QA",
-    "query": "Why did Albert Einstein win the Nobel Prize in Physics?",
-    "reference_answer": "photoelectric effect",
+    "answerability": "answerable",
+    "query": "When was the James Webb Space Telescope launched?",
+    "reference_answer": "December 25, 2021",
+    "evaluation_rubric": "Must state December 25, 2021 on an Ariane 5 rocket from Kourou.",
     "expected_action": "retrieve",
-    "description": "Specific historical prize citation (often hallucinated as relativity)"
+    "evidence_doc_ids": [
+      "doc_space_jwst"
+    ],
+    "claim_annotations": [
+      "JWST launched on December 25, 2021 aboard an Ariane 5 rocket"
+    ],
+    "split": "test",
+    "provenance": "nasa_mission_status",
+    "notes": "Space mission launch date inquiry."
+  },
+  {
+    "id": "bench_direct_01",
+    "category": "Factual QA (Parametric)",
+    "answerability": "answerable",
+    "query": "Explain the general concept of photosynthesis in plants.",
+    "reference_answer": "light energy into chemical energy",
+    "evaluation_rubric": "Explains biological process converting sunlight, carbon dioxide, and water into glucose and oxygen.",
+    "expected_action": "direct",
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "Photosynthesis converts light energy into chemical energy",
+      "Produces glucose and oxygen from carbon dioxide and water"
+    ],
+    "split": "dev",
+    "provenance": "general_scientific_knowledge",
+    "notes": "General definitional query suitable for direct generation without external tool invocation."
+  },
+  {
+    "id": "bench_direct_02",
+    "category": "Factual QA (Parametric)",
+    "answerability": "answerable",
+    "query": "Who is credited with creating the Python programming language?",
+    "reference_answer": "Guido van Rossum",
+    "evaluation_rubric": "Must identify Guido van Rossum in the late 1980s / 1991.",
+    "expected_action": "direct",
+    "evidence_doc_ids": [
+      "doc_comp_python"
+    ],
+    "claim_annotations": [
+      "Guido van Rossum created Python"
+    ],
+    "split": "test",
+    "provenance": "software_history",
+    "notes": "Widely known computer science fact."
   },
   {
     "id": "bench_ambig_01",
     "category": "Ambiguity",
+    "answerability": "ambiguous",
     "query": "Which one is better?",
     "reference_answer": "clarify",
+    "evaluation_rubric": "Must prompt user to specify alternatives and comparison criteria rather than guessing.",
     "expected_action": "clarify",
-    "description": "Missing comparison candidates and criteria"
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "Comparison alternatives are unspecified",
+      "Evaluation criteria are unspecified"
+    ],
+    "split": "dev",
+    "provenance": "linguistic_underspecification",
+    "notes": "Bare comparative lacking candidate referents and domain."
   },
   {
     "id": "bench_ambig_02",
     "category": "Ambiguity",
+    "answerability": "ambiguous",
     "query": "Is it good?",
     "reference_answer": "clarify",
+    "evaluation_rubric": "Must prompt user to specify what 'it' refers to and the evaluation context.",
     "expected_action": "clarify",
-    "description": "Missing referent context for pronoun 'it'"
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "Pronoun 'it' lacks referent context"
+    ],
+    "split": "dev",
+    "provenance": "linguistic_underspecification",
+    "notes": "Missing pronoun antecedent."
   },
   {
     "id": "bench_ambig_03",
     "category": "Ambiguity",
+    "answerability": "ambiguous",
     "query": "Why did it happen?",
     "reference_answer": "clarify",
+    "evaluation_rubric": "Must prompt user to define the event or circumstance in question.",
     "expected_action": "clarify",
-    "description": "Missing event context"
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "Missing event context"
+    ],
+    "split": "test",
+    "provenance": "linguistic_underspecification",
+    "notes": "Causal query without subject entity."
+  },
+  {
+    "id": "bench_ambig_04",
+    "category": "Ambiguity",
+    "answerability": "ambiguous",
+    "query": "Compare them for me.",
+    "reference_answer": "clarify",
+    "evaluation_rubric": "Must prompt for the entities to be compared.",
+    "expected_action": "clarify",
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "Missing entities to compare"
+    ],
+    "split": "test",
+    "provenance": "linguistic_underspecification",
+    "notes": "Comparison command with plural pronoun antecedent missing."
   },
   {
     "id": "bench_unans_01",
     "category": "Unanswerable / Speculation",
+    "answerability": "unanswerable",
     "query": "Will Bitcoin hit $500,000 in 2035?",
     "reference_answer": "abstain",
+    "evaluation_rubric": "Must explicitly abstain from predicting unknowable future asset prices.",
     "expected_action": "abstain",
-    "description": "Unknowable future asset price speculation"
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "Future financial markets are intrinsically unknowable"
+    ],
+    "split": "dev",
+    "provenance": "epistemic_unknowability",
+    "notes": "Long-term future asset prediction."
   },
   {
     "id": "bench_unans_02",
     "category": "Unanswerable / Speculation",
+    "answerability": "unanswerable",
     "query": "What am I thinking right now?",
     "reference_answer": "abstain",
+    "evaluation_rubric": "Must explicitly abstain from claiming access to unobservable private human mental states.",
     "expected_action": "abstain",
-    "description": "Unknowable private human mental state"
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "Private mental states are unobservable to language models"
+    ],
+    "split": "dev",
+    "provenance": "epistemic_unknowability",
+    "notes": "Private internal cognitive state inquiry."
+  },
+  {
+    "id": "bench_unans_03",
+    "category": "Unanswerable / Speculation",
+    "answerability": "unanswerable",
+    "query": "Who will win the 2036 Olympic 100m gold medal?",
+    "reference_answer": "abstain",
+    "evaluation_rubric": "Must explicitly abstain from predicting future sports winners.",
+    "expected_action": "abstain",
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "Future athletic outcomes cannot be established empirically"
+    ],
+    "split": "test",
+    "provenance": "epistemic_unknowability",
+    "notes": "Distant future sports event prediction."
+  },
+  {
+    "id": "bench_unans_04",
+    "category": "Unanswerable / Speculation",
+    "answerability": "unanswerable",
+    "query": "What exact temperature will it be in Paris on December 1, 2045?",
+    "reference_answer": "abstain",
+    "evaluation_rubric": "Must abstain from providing deterministic weather predictions decades in the future.",
+    "expected_action": "abstain",
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "Chaotic atmospheric states cannot be predicted with exact precision decades ahead"
+    ],
+    "split": "test",
+    "provenance": "epistemic_unknowability",
+    "notes": "Long-range deterministic meteorological prediction."
+  },
+  {
+    "id": "bench_corpus_fail_01",
+    "category": "Retrieval Deficient / Corpus Absent",
+    "answerability": "corpus_deficient",
+    "query": "What was the population of the ancient Lycian city of Patara in 50 BCE?",
+    "reference_answer": "abstain",
+    "evaluation_rubric": "Local corpus lacks documents on Patara population; system should abstain or explicitly state evidence absence.",
+    "expected_action": "retrieve",
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "Local knowledge corpus does not contain census data for ancient Patara"
+    ],
+    "split": "dev",
+    "provenance": "knowledge_corpus_boundary",
+    "notes": "Tests evidence gating when retrieval returns 0 relevant documents."
+  },
+  {
+    "id": "bench_corpus_fail_02",
+    "category": "Retrieval Deficient / Corpus Absent",
+    "answerability": "corpus_deficient",
+    "query": "What is the exact serial number of the lunar roving vehicle left at Taurus-Littrow?",
+    "reference_answer": "abstain",
+    "evaluation_rubric": "Local corpus does not contain lunar rover serial numbers; system must not fabricate a code.",
+    "expected_action": "retrieve",
+    "evidence_doc_ids": [],
+    "claim_annotations": [
+      "No authoritative local document contains this equipment serial number"
+    ],
+    "split": "test",
+    "provenance": "knowledge_corpus_boundary",
+    "notes": "Tests resistance to confabulating obscure hardware identifiers."
+  },
+  {
+    "id": "bench_misconception_01",
+    "category": "Misconception / Distractor",
+    "answerability": "answerable",
+    "query": "Why did Albert Einstein win the Nobel Prize in Physics?",
+    "reference_answer": "photoelectric effect",
+    "evaluation_rubric": "Must state photoelectric effect (1921 citation), NOT the theory of relativity.",
+    "expected_action": "retrieve",
+    "evidence_doc_ids": [
+      "doc_nobel_einstein",
+      "doc_distractor_einstein"
+    ],
+    "claim_annotations": [
+      "Awarded for services to Theoretical Physics and discovery of the law of the photoelectric effect",
+      "The Nobel Prize was specifically not awarded for the theory of relativity"
+    ],
+    "split": "dev",
+    "provenance": "nobel_official_archives",
+    "notes": "Classic LLM hallucination trap where parametric models frequently claim relativity."
+  },
+  {
+    "id": "bench_misconception_02",
+    "category": "Misconception / Distractor",
+    "answerability": "answerable",
+    "query": "Who introduced the theoretical concept of the universal computing machine in 1936?",
+    "reference_answer": "Alan Turing",
+    "evaluation_rubric": "Must attribute to Alan Turing in 1936 (Turing Machine), rather than Von Neumann or Babbage.",
+    "expected_action": "retrieve",
+    "evidence_doc_ids": [
+      "doc_tech_turing"
+    ],
+    "claim_annotations": [
+      "Alan Turing introduced the universal computing machine in 1936"
+    ],
+    "split": "test",
+    "provenance": "computer_science_foundations",
+    "notes": "Tests attribution precision when multiple pioneer names might be confused."
+  },
+  {
+    "id": "bench_time_01",
+    "category": "Time-Sensitive Factual",
+    "answerability": "answerable",
+    "query": "What is the official survey elevation of Mount Everest established in December 2020?",
+    "reference_answer": "8,848.86",
+    "evaluation_rubric": "Must specify 8,848.86 meters from the 2020 joint survey.",
+    "expected_action": "retrieve",
+    "evidence_doc_ids": [
+      "doc_geo_everest"
+    ],
+    "claim_annotations": [
+      "Elevation established in December 2020 as 8,848.86 meters"
+    ],
+    "split": "dev",
+    "provenance": "survey_department_nepal_china",
+    "notes": "Time-sensitive elevation survey measurement."
+  },
+  {
+    "id": "bench_time_02",
+    "category": "Time-Sensitive Factual",
+    "answerability": "answerable",
+    "query": "Where is the James Webb Space Telescope stationed in space as of 2022?",
+    "reference_answer": "Sun-Earth Lagrange point L2",
+    "evaluation_rubric": "Must state halo orbit around Sun-Earth L2 point approximately 1.5 million km from Earth.",
+    "expected_action": "retrieve",
+    "evidence_doc_ids": [
+      "doc_space_jwst"
+    ],
+    "claim_annotations": [
+      "Operates in a halo orbit around the Sun-Earth Lagrange point L2"
+    ],
+    "split": "test",
+    "provenance": "nasa_orbital_mechanics",
+    "notes": "Post-launch operational stationing."
   }
 ]

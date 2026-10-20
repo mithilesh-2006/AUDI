@@ -82,9 +82,17 @@ class LocalCorpusRetriever:
         # Load or initialize corpus
         self.load_corpus()
 
+    STOPWORDS = {
+        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+        "in", "on", "at", "to", "for", "of", "with", "by", "from", "up",
+        "about", "into", "over", "after", "what", "which", "who", "whom",
+        "this", "that", "these", "those", "am", "it", "its", "and", "or", "as", "did"
+    }
+
     def _tokenize(self, text: str) -> List[str]:
-        """Simple clean tokenization."""
-        return re.findall(r"\b\w{2,}\b", text.lower())
+        """Tokenize text and filter out generic grammatical stopwords."""
+        tokens = re.findall(r"\b\w{2,}\b", text.lower())
+        return [t for t in tokens if t not in self.STOPWORDS]
 
     def add_document(self, doc_id: str, title: str, source: str, text: str, metadata: Optional[Dict[str, Any]] = None, save: bool = True) -> None:
         """Add a document to the in-memory corpus and rebuild passages."""
