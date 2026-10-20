@@ -202,7 +202,11 @@ All actions, decision rationales, uncertainty signals, latency, token usage, and
   - **Minimalist White UI & Zero Emojis:** Complete UI overhaul in `app.py` adopting a research lab aesthetic (slate typography on white cards, no emojis), plus a dedicated Phase 4 Uncertainty & Calibration panel.
   - **Test Suite:** 61 passing unit tests (`tests/test_calibration_policy.py`, `test_controller.py`).
 
-- [ ] **Phase 5: Evaluation and Analysis (Next)**
-  - Full held-out benchmark evaluation with detailed ablation analysis.
-  - Confusion matrix of action decisions vs ground-truth archetypes.
-  - Latency, token usage, and cost-efficiency trade-off curve visualizations.
+- [x] **Phase 5: Evaluation, Confusion Matrix & Ablation Analysis (Completed)**
+  - **Full 5-Policy Comparative Evaluation:** Simultaneous benchmarking of Direct-Only, Always-Retrieve, Fixed-Verify, Adaptive Rule Baseline, and Calibrated Cost-Aware Policy (`src/experiment_runner.py`).
+  - **Action Selection Confusion Matrix:** Crosstabulation of Expected Action vs Selected Action across all policies.
+  - **Routing Mistake Categorization:** Automated failure logging and classification (Under-mitigation, Premature Answer on Ambiguous Query, Failed Abstention, Model Arithmetic Fallback).
+  - **Component Ablation Studies:** Marginal utility analysis across No-Calculator, No-Verification Gating, Low Cost Penalty ($\lambda=0.1$), and High Cost Penalty ($\lambda=1.2$).
+  - **Zero-Leakage Held-Out Generalization:** Dedicated evaluation pipeline strictly over held-out test splits.
+  - **Research Dashboard:** Upgraded Streamlit Multi-Policy Benchmark Suite with interactive matrix views, mistake tables, ablation runner, and CSV exports (`app.py`).
+  - **Test Suite:** 66 passing unit tests (`tests/test_evaluation_analysis.py`, `test_controller.py`).

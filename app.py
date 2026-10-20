@@ -669,15 +669,18 @@ def main():
             2. **Always-Retrieve**: Executes evidence retrieval for every query.
             3. **Fixed-Verify**: Retrieves evidence and checks claims for every query.
             4. **Adaptive Policy**: Selects actions based on observable uncertainty cues and cost penalty lambda.
+            5. **Calibrated Cost-Aware Policy**: Minimizes empirical quality loss and cost prior.
             """
         )
 
         st.subheader("Benchmark Execution")
         st.write(f"Benchmark Dataset contains **{len(runner.dataset)}** curated questions across Arithmetic, Factual QA, Ambiguity, and Unanswerables.")
 
-        col_run, col_bar = st.columns([1, 3])
-        with col_run:
-            start_benchmark = st.button("Run Full Benchmark Evaluation", type="primary")
+        col_run1, col_run2, col_space = st.columns([1.5, 1.5, 2])
+        with col_run1:
+            start_benchmark = st.button("Run Full 5-Policy Benchmark", type="primary")
+        with col_run2:
+            start_ablation = st.button("Run Component Ablation Study")
 
         if start_benchmark or "benchmark_results" in st.session_state:
             if start_benchmark:
@@ -694,20 +697,63 @@ def main():
             else:
                 res = st.session_state["benchmark_results"]
 
-            st.markdown("### Comparative Performance Summary")
-            st.dataframe(res["summary_df"], use_container_width=True)
+            tab_sum, tab_cm, tab_mistakes, tab_items = st.tabs([
+                "Comparative Summary",
+                "Action Confusion Matrix",
+                "Routing Mistake Analysis",
+                "Detailed Predictions and Export",
+            ])
 
-            st.markdown("### Detailed Item-Level Predictions")
-            st.dataframe(res["detailed_df"], use_container_width=True)
+            with tab_sum:
+                st.markdown("### Comparative Performance Summary (5 Policies)")
+                st.dataframe(res["summary_df"], use_container_width=True)
 
-            # Download results
-            csv_data = res["detailed_df"].to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "Download Detailed Benchmark Results (CSV)",
-                data=csv_data,
-                file_name="benchmark_results.csv",
-                mime="text/csv",
-            )
+            with tab_cm:
+                st.markdown("### Action Selection Confusion Matrix")
+                pol_options = res["summary_df"]["Policy"].tolist()
+                selected_pol_cm = st.selectbox(
+                    "Select Policy for Matrix Analysis:",
+                    pol_options,
+                    index=len(pol_options) - 1,
+                    key="cm_policy_select"
+                )
+                cm_df = runner.compute_confusion_matrix(res["detailed_df"], selected_pol_cm)
+                if not cm_df.empty:
+                    st.dataframe(cm_df, use_container_width=True)
+                else:
+                    st.info("No confusion matrix available for this policy.")
+
+            with tab_mistakes:
+                st.markdown("### Routing Mistake Categorization and Failure Analysis")
+                st.caption("Displays instances where the policy's chosen action diverged from the benchmark archetype:")
+                if not res["mistakes_df"].empty:
+                    st.dataframe(res["mistakes_df"], use_container_width=True)
+                else:
+                    st.success("No routing mistakes detected across evaluated queries.")
+
+            with tab_items:
+                st.markdown("### Detailed Item-Level Predictions")
+                st.dataframe(res["detailed_df"], use_container_width=True)
+
+                csv_data = res["detailed_df"].to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    "Download Detailed Benchmark Results (CSV)",
+                    data=csv_data,
+                    file_name="benchmark_results.csv",
+                    mime="text/csv",
+                )
+
+        if start_ablation or "ablation_results" in st.session_state:
+            if start_ablation:
+                with st.spinner("Executing component ablations across parameter configurations..."):
+                    ab_df = runner.run_ablation_study(tradeoff_lambda=tradeoff_lambda)
+                    st.session_state["ablation_results"] = ab_df
+            else:
+                ab_df = st.session_state["ablation_results"]
+
+            st.markdown("---")
+            st.markdown("### Component Ablation Study Results")
+            st.dataframe(ab_df, use_container_width=True)
 
     # VIEW 3: Statistical Uncertainty & Calibration (Phase 4)
     elif app_mode == "Statistical Uncertainty & Calibration":

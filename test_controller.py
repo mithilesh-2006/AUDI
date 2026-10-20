@@ -17,6 +17,7 @@ from tests.test_actions import TestMitigationToolsPhase3
 from tests.test_cost_accounting import TestCostAndLogging
 from tests.test_experiment_runner import TestExperimentRunner
 from tests.test_calibration_policy import TestCalibrationAndLearnedPolicyPhase4
+from tests.test_evaluation_analysis import TestEvaluationAnalysisPhase5
 
 
 if __name__ == "__main__":

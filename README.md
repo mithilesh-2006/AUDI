@@ -1,7 +1,7 @@
 # Adaptive, Cost-Aware Hallucination Mitigation for Large Language Models
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Tests Passing](https://img.shields.io/badge/tests-61%20passed-brightgreen.svg)](test_controller.py)
+[![Tests Passing](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)](test_controller.py)
 [![UI: Streamlit](https://img.shields.io/badge/UI-Streamlit-red.svg)](app.py)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -62,12 +62,13 @@ Where:
                           Experiment Comparison Suite
                             (src/experiment_runner.py)
                      [Direct-only, Always-retrieve,
-                      Fixed-verify, Adaptive Policy]
+                      Fixed-verify, Adaptive Policy,
+                      Calibrated Cost-Aware Policy]
 ```
 
 ---
 
-## 3. Candidate Actions & Mitigation Tools (Phase 3)
+## 3. Candidate Actions & Mitigation Tools (Phases 1-5)
 
 | Action | Handler | Implementation Details | Purpose | Cost Unit |
 |---|---|---|---|---|
@@ -96,9 +97,10 @@ Where:
 - **Uncertainty Estimation:** Multi-sample semantic disagreement, Jaccard distance, and token entropy (`src/uncertainty.py`)
 - **Calibration Engine:** Expected Calibration Error (ECE), Brier score, temperature scaling, and zero-leakage dataset partitioner (`src/calibration.py`)
 - **Cost-Sensitive Decision Policy:** Calibrated quality loss vs cost penalty optimization (`src/policy.py`)
+- **Scientific Evaluation:** 5-policy benchmark runner, action confusion matrices, routing mistake categorization, and component ablations (`src/experiment_runner.py`)
 - **LLM Integration:** Pluggable adapter (`OfflineLocalAdapter`, `OpenAIAdapter`, `GeminiAdapter`, `OllamaAdapter`) with prompt versioning
 - **Experiment Storage:** SQLite (`results/experiments.db`) and JSONL (`results/logs/runs.jsonl`)
-- **Test Framework:** Python `unittest` (61 tests passing)
+- **Test Framework:** Python `unittest` (66 tests passing)
 
 ---
 
