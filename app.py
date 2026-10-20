@@ -60,57 +60,119 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Clean White Minimalist Theme */
-    body {
-        background-color: #ffffff;
-        color: #0f172a;
+    /* White Theme - Universal High-Contrast Typography & Surfaces */
+    html, body, [class*="css"] {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     .stApp {
-        background-color: #ffffff;
+        background-color: #ffffff !important;
+        color: #0f172a !important;
     }
+    
+    /* Headers & Typography */
+    h1, h2, h3, h4, h5, h6 {
+        color: #0f172a !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.015em;
+    }
+    p, span, label, li {
+        color: #334155 !important;
+        line-height: 1.6;
+    }
+    strong, b {
+        color: #0f172a !important;
+        font-weight: 600 !important;
+    }
+    small, .caption, [data-testid="stCaptionContainer"] {
+        color: #64748b !important;
+    }
+    
     .main-header {
         font-size: 1.85rem;
         font-weight: 700;
-        color: #0f172a;
-        margin-bottom: 0.2rem;
+        color: #0f172a !important;
+        margin-bottom: 0.25rem;
         letter-spacing: -0.02em;
     }
     .sub-header {
         font-size: 0.95rem;
-        color: #475569;
-        margin-bottom: 1.25rem;
-        line-height: 1.5;
+        color: #475569 !important;
+        margin-bottom: 1.35rem;
+        line-height: 1.55;
     }
-    .badge-action {
-        display: inline-block;
-        padding: 0.25rem 0.65rem;
-        border-radius: 4px;
-        font-weight: 600;
-        font-size: 0.85rem;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
+
+    /* Sidebar Surfaces & Text */
+    [data-testid="stSidebar"] {
+        background-color: #f8fafc !important;
+        border-right: 1px solid #e2e8f0 !important;
     }
-    .action-direct { background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-    .action-calculate { background-color: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
-    .action-retrieve { background-color: #fefce8; color: #a16207; border: 1px solid #fef08a; }
-    .action-clarify { background-color: #faf5ff; color: #7e22ce; border: 1px solid #e9d5ff; }
-    .action-abstain { background-color: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
-    .action-verify { background-color: #f0fdfa; color: #0f766e; border: 1px solid #99f6e4; }
-    .action-revise { background-color: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+    [data-testid="stSidebar"] * {
+        color: #1e293b !important;
+    }
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+        color: #0f172a !important;
+    }
+    [data-testid="stSidebar"] label {
+        color: #334155 !important;
+        font-weight: 500;
+    }
+
+    /* Input Fields & Textareas */
+    .stTextInput input, .stTextArea textarea {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 6px !important;
+    }
+    .stTextInput input:focus, .stTextArea textarea:focus {
+        border-color: #2563eb !important;
+        box-shadow: 0 0 0 1px #2563eb !important;
+    }
+    [data-baseweb="select"] * {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+    }
+
+    /* Cards & Containers */
     .status-card {
-        padding: 1rem 1.25rem;
+        padding: 1.15rem 1.35rem;
         border-radius: 6px;
-        background-color: #ffffff;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.03);
+        background-color: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
         margin-bottom: 1rem;
         font-size: 0.95rem;
-        color: #1e293b;
+        color: #0f172a !important;
+        line-height: 1.6;
+    }
+    .status-card * {
+        color: #0f172a !important;
+    }
+    .section-card {
+        background-color: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 6px !important;
+        padding: 1.1rem;
+        margin-bottom: 1rem;
+    }
+
+    /* Metric Cards */
+    [data-testid="stMetricValue"] {
+        color: #0f172a !important;
+        font-weight: 700 !important;
+    }
+    [data-testid="stMetricLabel"] {
+        color: #64748b !important;
+        font-weight: 600 !important;
+        font-size: 0.8rem !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.04em !important;
     }
     .metric-label-clean {
         font-size: 0.78rem;
-        color: #64748b;
+        color: #64748b !important;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -118,15 +180,68 @@ st.markdown(
     .metric-value-clean {
         font-size: 1.35rem;
         font-weight: 700;
-        color: #0f172a;
+        color: #0f172a !important;
     }
-    .section-card {
-        background-color: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 6px;
-        padding: 1rem;
-        margin-bottom: 1rem;
+
+    /* Expanders */
+    [data-testid="stExpander"] {
+        background-color: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 6px !important;
     }
+    [data-testid="stExpander"] summary {
+        color: #0f172a !important;
+        font-weight: 600 !important;
+    }
+    [data-testid="stExpander"] * {
+        color: #1e293b !important;
+    }
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab"] {
+        color: #64748b !important;
+        font-weight: 600 !important;
+        font-size: 0.9rem !important;
+        background-color: transparent !important;
+        border-bottom: 2px solid transparent !important;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #0f172a !important;
+        border-bottom-color: #2563eb !important;
+    }
+
+    /* DataFrames & Tables */
+    [data-testid="stDataFrame"] {
+        background-color: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 6px !important;
+    }
+
+    /* Alert Banners */
+    .stAlert {
+        border-radius: 6px !important;
+    }
+    .stAlert * {
+        color: #0f172a !important;
+    }
+
+    /* Action Badges */
+    .badge-action {
+        display: inline-block;
+        padding: 0.25rem 0.65rem;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 0.82rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    .action-direct { background-color: #eff6ff !important; color: #1d4ed8 !important; border: 1px solid #bfdbfe !important; }
+    .action-calculate { background-color: #f0fdf4 !important; color: #15803d !important; border: 1px solid #bbf7d0 !important; }
+    .action-retrieve { background-color: #fefce8 !important; color: #a16207 !important; border: 1px solid #fef08a !important; }
+    .action-clarify { background-color: #faf5ff !important; color: #7e22ce !important; border: 1px solid #e9d5ff !important; }
+    .action-abstain { background-color: #fef2f2 !important; color: #b91c1c !important; border: 1px solid #fecaca !important; }
+    .action-verify { background-color: #f0fdfa !important; color: #0f766e !important; border: 1px solid #99f6e4 !important; }
+    .action-revise { background-color: #fff7ed !important; color: #c2410c !important; border: 1px solid #fed7aa !important; }
     </style>
     """,
     unsafe_allow_html=True,

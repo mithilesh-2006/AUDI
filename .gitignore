@@ -33,5 +33,5 @@ results/exports/
 .DS_Store
 Thumbs.db
 
-# Streamlit
-.streamlit/
+# Streamlit secrets (preserve config.toml for white theme)
+.streamlit/secrets.toml
