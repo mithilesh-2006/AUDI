@@ -154,12 +154,25 @@ class MitigationController:
         self.calibrator = calibrator or CalibrationEngine()
 
         # Policy registry
+        adaptive_pol = AdaptiveRulePolicy(default_lambda=tradeoff_lambda)
+        learned_pol = LearnedCostAwarePolicy(default_lambda=tradeoff_lambda)
+        direct_pol = DirectOnlyPolicy()
+        retrieve_pol = AlwaysRetrievePolicy()
+        verify_pol = FixedVerifyPolicy()
+
         self.policies: Dict[str, BasePolicy] = {
-            PolicyType.ADAPTIVE.value: AdaptiveRulePolicy(default_lambda=tradeoff_lambda),
-            PolicyType.LEARNED_COST_AWARE.value: LearnedCostAwarePolicy(default_lambda=tradeoff_lambda),
-            PolicyType.DIRECT_ONLY.value: DirectOnlyPolicy(),
-            PolicyType.ALWAYS_RETRIEVE.value: AlwaysRetrievePolicy(),
-            PolicyType.FIXED_VERIFY.value: FixedVerifyPolicy(),
+            PolicyType.ADAPTIVE.value: adaptive_pol,
+            PolicyType.LEARNED_COST_AWARE.value: learned_pol,
+            PolicyType.DIRECT_ONLY.value: direct_pol,
+            PolicyType.ALWAYS_RETRIEVE.value: retrieve_pol,
+            PolicyType.FIXED_VERIFY.value: verify_pol,
+            # Policy slug aliases
+            "direct_only": direct_pol,
+            "always_retrieve": retrieve_pol,
+            "fixed_verify": verify_pol,
+            "adaptive_rules": adaptive_pol,
+            "adaptive_rule_based": adaptive_pol,
+            "learned_cost_aware": learned_pol,
         }
 
     def process_query(
@@ -173,7 +186,6 @@ class MitigationController:
         compare_direct_execution: bool = True,
     ) -> ExecutionResult:
         """Process a query through the adaptive mitigation controller."""
-        start_time_perf = time.perf_counter()
         run_id = f"run_{uuid.uuid4().hex[:10]}"
         timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -188,6 +200,9 @@ class MitigationController:
             t_dir_start = time.perf_counter()
             self.model_adapter.generate_draft(query=query, task_type="direct", settings=gen_cfg)
             direct_latency_ms = (time.perf_counter() - t_dir_start) * 1000.0
+
+        # Start timing AUDI controller pipeline execution (after baseline benchmark)
+        start_time_perf = time.perf_counter()
 
         # Step 1: Feature & Uncertainty Signal Extraction and Policy Selection
         t_dec_start = time.perf_counter()
@@ -389,11 +404,14 @@ class MitigationController:
             is_faster = audi_latency_ms < direct_latency_ms
 
             if action == "calculate":
-                eff_summary = f"AUDI routed to deterministic AST calculator in {audi_latency_ms:.2f} ms vs {direct_latency_ms:.2f} ms Direct execution ({speedup:.1f}x speedup with 0% arithmetic hallucination)."
+                rel = f"{speedup:.1f}x speedup" if is_faster else f"+{delta_ms:.2f} ms overhead"
+                eff_summary = f"AUDI routed to deterministic AST calculator in {audi_latency_ms:.2f} ms vs {direct_latency_ms:.2f} ms Direct execution ({rel} with 0% arithmetic hallucination)."
             elif action == "abstain":
-                eff_summary = f"AUDI detected unknowable speculation and safely abstained in {audi_latency_ms:.2f} ms vs {direct_latency_ms:.2f} ms Direct execution ({speedup:.1f}x faster, eliminating fabricated claims)."
+                rel = f"{speedup:.1f}x speedup" if is_faster else f"+{delta_ms:.2f} ms overhead"
+                eff_summary = f"AUDI detected unknowable speculation and safely abstained in {audi_latency_ms:.2f} ms vs {direct_latency_ms:.2f} ms Direct execution ({rel}, eliminating fabricated claims)."
             elif action == "clarify":
-                eff_summary = f"AUDI requested structured clarification in {audi_latency_ms:.2f} ms vs {direct_latency_ms:.2f} ms Direct execution ({speedup:.1f}x faster, preventing premature ungrounded response)."
+                rel = f"{speedup:.1f}x speedup" if is_faster else f"+{delta_ms:.2f} ms overhead"
+                eff_summary = f"AUDI requested structured clarification in {audi_latency_ms:.2f} ms vs {direct_latency_ms:.2f} ms Direct execution ({rel}, preventing premature ungrounded response)."
             elif action in ("retrieve", "verify"):
                 eff_summary = f"AUDI invested {audi_latency_ms:.2f} ms ({audi_action_ms:.2f} ms in retrieval/verification) vs {direct_latency_ms:.2f} ms Direct execution ({'+' if delta_ms >= 0 else ''}{delta_ms:.2f} ms investment to guarantee evidence grounding)."
             else:
@@ -436,9 +454,19 @@ class MitigationController:
 
         is_corr: Optional[bool] = None
         if reference_answer:
-            ref_clean = reference_answer.lower().strip()
             ans_clean = final_answer.lower().strip()
-            is_corr = ref_clean in ans_clean
+            ref_str = str(reference_answer).strip()
+            if ref_str.startswith("[") and ref_str.endswith("]"):
+                try:
+                    cands = json.loads(ref_str)
+                    if isinstance(cands, list):
+                        is_corr = any(str(c).lower().strip() in ans_clean for c in cands if c)
+                    else:
+                        is_corr = str(cands).lower().strip() in ans_clean
+                except Exception:
+                    is_corr = ref_str.lower() in ans_clean
+            else:
+                is_corr = ref_str.lower() in ans_clean
 
         log_record = RunRecord(
             run_id=run_id,

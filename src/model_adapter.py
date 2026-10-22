@@ -18,6 +18,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from typing import Optional, Dict, Any, List
 import requests
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 
 @dataclass
@@ -237,7 +240,7 @@ class OpenAIAdapter(BaseModelAdapter):
     """OpenAI API adapter using HTTP requests with full generation settings."""
 
     def __init__(self, api_key: Optional[str] = None, model_id: Optional[str] = None, timeout: float = 20.0):
-        key = api_key or os.getenv("OPENAI_API_KEY", "")
+        key = api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")
         model = model_id or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         super().__init__(model_id=model, provider_name="openai")
         self.api_key = key
@@ -352,8 +355,8 @@ class GeminiAdapter(BaseModelAdapter):
     """Google Gemini API adapter via REST."""
 
     def __init__(self, api_key: Optional[str] = None, model_id: Optional[str] = None, timeout: float = 20.0):
-        key = api_key or os.getenv("GEMINI_API_KEY", "")
-        model = model_id or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY", "")
+        model = model_id or os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
         super().__init__(model_id=model, provider_name="gemini")
         self.api_key = key
         self.timeout = timeout
@@ -555,16 +558,17 @@ class OllamaAdapter(BaseModelAdapter):
 def get_model_adapter(
     provider_name: Optional[str] = None,
     model_id: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> BaseModelAdapter:
     """Factory creating the configured model adapter."""
     prov = (provider_name or os.getenv("LLM_PROVIDER", "offline")).lower()
 
     if prov == "openai":
-        key = os.getenv("OPENAI_API_KEY", "")
+        key = api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")
         if key and not key.startswith("your_"):
             return OpenAIAdapter(api_key=key, model_id=model_id)
     elif prov == "gemini":
-        key = os.getenv("GEMINI_API_KEY", "")
+        key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY", "")
         if key and not key.startswith("your_"):
             return GeminiAdapter(api_key=key, model_id=model_id)
     elif prov == "ollama":

@@ -99,6 +99,8 @@ class TestCostAndLogging(unittest.TestCase):
             logger.export_json(json_export)
             self.assertTrue(os.path.exists(json_export))
 
+            logger.close()
+
 
 if __name__ == "__main__":
     unittest.main()

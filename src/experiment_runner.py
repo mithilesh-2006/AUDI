@@ -104,7 +104,7 @@ class ExperimentRunner:
 
     def __init__(self, controller: Optional[MitigationController] = None, dataset_path: Optional[str] = None):
         self.controller = controller or MitigationController()
-        self.dataset_path = dataset_path or os.path.join("data", "benchmarks", "evaluation_set.json")
+        self.dataset_path = dataset_path or os.path.join("data", "benchmarks", "test_set.json")
         self.dataset: List[Dict[str, Any]] = []
         self.load_dataset()
 
@@ -203,15 +203,18 @@ class ExperimentRunner:
                     total_overhead += res.execution_time_comparison.decision_overhead_ms
 
                 # Evaluation scoring across task archetypes
-                ans_text = res.final_answer.lower()
+                ans_text = str(res.final_answer or "").lower()
                 is_correct = False
-                is_abstain = act == "abstain" or "abstain" in ans_text
+                is_abstain = bool(act == "abstain" or "abstain" in ans_text or "abstention" in ans_text)
 
                 if is_abstain:
                     total_abstentions += 1
 
                 # Answerability classification
-                is_unanswerable_task = (ans_label == "unanswerable" or cat == "Unanswerable / Speculation")
+                is_unanswerable_task = bool(
+                    str(ans_label or "").lower() == "unanswerable" 
+                    or str(cat or "").lower() in ("unanswerable / speculation", "unanswerable", "speculation")
+                )
                 if is_unanswerable_task:
                     unanswerable_total += 1
                     if is_abstain:
@@ -221,10 +224,20 @@ class ExperimentRunner:
                     if is_abstain:
                         false_abstentions += 1
 
-                if cat == "Arithmetic":
-                    is_correct = ref.lower() in ans_text or act == "calculate"
-                elif cat in ("Factual QA", "Time-Sensitive Factual", "Misconception / Distractor", "Factual QA (Parametric)"):
-                    is_correct = ref.lower() in ans_text
+                ref_str = str(ref).strip()
+                if ref_str.startswith("[") and ref_str.endswith("]"):
+                    try:
+                        cands = json.loads(ref_str)
+                        has_cand_match = any(str(c).lower().strip() in ans_text for c in cands if c) if isinstance(cands, list) else (str(cands).lower().strip() in ans_text)
+                    except Exception:
+                        has_cand_match = ref_str.lower() in ans_text
+                else:
+                    has_cand_match = (ref_str.lower() in ans_text) if ref_str else False
+
+                if cat in ("Arithmetic", "Multi-Step Reasoning"):
+                    is_correct = has_cand_match or act == "calculate"
+                elif cat in ("Factual QA", "Time-Sensitive Factual", "Misconception / Distractor", "Factual QA (Parametric)", "Factual Knowledge", "Mixed Multi-hop"):
+                    is_correct = has_cand_match
                 elif cat == "Ambiguity":
                     is_correct = act == "clarify" or "clarif" in ans_text
                 elif cat == "Unanswerable / Speculation":
@@ -232,7 +245,7 @@ class ExperimentRunner:
                 elif cat == "Retrieval Deficient / Corpus Absent":
                     is_correct = is_abstain or "insufficient" in ans_text or act in ("retrieve", "abstain")
                 else:
-                    is_correct = (ref.lower() in ans_text) if ref else len(ans_text) > 10
+                    is_correct = has_cand_match if ref_str else len(ans_text) > 10
 
                 if is_correct:
                     correct_count += 1
@@ -356,19 +369,26 @@ class ExperimentRunner:
         )
         return cm
 
-    def run_ablation_study(self, tradeoff_lambda: float = 0.5) -> pd.DataFrame:
+    def run_ablation_study(
+        self,
+        tradeoff_lambda: float = 0.5,
+        dataset_override: Optional[List[Dict[str, Any]]] = None,
+    ) -> pd.DataFrame:
         """
         Executes component ablations to measure marginal utility of system components:
         1. Full Adaptive Policy (Baseline)
-        2. Ablation: No Calculator (Arithmetic forced to Direct model generation)
-        3. Ablation: Uniform Retrieval (No uncertainty gating)
-        4. Parameter Sensitivity: Low Cost Penalty (lambda = 0.1)
-        5. Parameter Sensitivity: High Cost Penalty (lambda = 1.2)
+        2. Parameter Sensitivity: Low Cost Penalty (lambda = 0.1)
+        3. Parameter Sensitivity: High Cost Penalty (lambda = 1.2)
+        4. Learned Cost-Aware Policy (Phase 4)
         """
         ablation_rows = []
 
         # 1. Full Adaptive Policy
-        full_res = self.run_benchmark(policies=[PolicyType.ADAPTIVE.value], tradeoff_lambda=tradeoff_lambda)
+        full_res = self.run_benchmark(
+            policies=[PolicyType.ADAPTIVE.value],
+            tradeoff_lambda=tradeoff_lambda,
+            dataset_override=dataset_override,
+        )
         full_sum = full_res["raw_summaries"][0]
         ablation_rows.append({
             "Configuration": "Full Adaptive Controller (Standard)",
@@ -380,7 +400,11 @@ class ExperimentRunner:
         })
 
         # 2. Sensitivity: Low Cost Penalty lambda = 0.1 (aggressively uses retrieval/verification)
-        low_res = self.run_benchmark(policies=[PolicyType.ADAPTIVE.value], tradeoff_lambda=0.1)
+        low_res = self.run_benchmark(
+            policies=[PolicyType.ADAPTIVE.value],
+            tradeoff_lambda=0.1,
+            dataset_override=dataset_override,
+        )
         low_sum = low_res["raw_summaries"][0]
         ablation_rows.append({
             "Configuration": "Low Cost Penalty (lambda = 0.1)",
@@ -392,7 +416,11 @@ class ExperimentRunner:
         })
 
         # 3. Sensitivity: High Cost Penalty lambda = 1.2 (heavily penalizes tool calls)
-        high_res = self.run_benchmark(policies=[PolicyType.ADAPTIVE.value], tradeoff_lambda=1.2)
+        high_res = self.run_benchmark(
+            policies=[PolicyType.ADAPTIVE.value],
+            tradeoff_lambda=1.2,
+            dataset_override=dataset_override,
+        )
         high_sum = high_res["raw_summaries"][0]
         ablation_rows.append({
             "Configuration": "High Cost Penalty (lambda = 1.2)",
@@ -404,7 +432,11 @@ class ExperimentRunner:
         })
 
         # 4. Learned Cost-Aware Policy (Phase 4)
-        learned_res = self.run_benchmark(policies=[PolicyType.LEARNED_COST_AWARE.value], tradeoff_lambda=tradeoff_lambda)
+        learned_res = self.run_benchmark(
+            policies=[PolicyType.LEARNED_COST_AWARE.value],
+            tradeoff_lambda=tradeoff_lambda,
+            dataset_override=dataset_override,
+        )
         learned_sum = learned_res["raw_summaries"][0]
         ablation_rows.append({
             "Configuration": "Calibrated Cost-Aware Policy (Phase 4)",

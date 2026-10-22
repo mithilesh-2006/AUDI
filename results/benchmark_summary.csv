@@ -1,0 +1,6 @@
+Policy,Accuracy / Correctness,Evidence Support Rate,Unsupported Claim Rate,Abstention on Unanswerables,Abstention Precision,Abstention Recall,False Abstention Rate,Avg Latency (ms),Avg Decision Overhead (ms),Avg Tokens,Avg Tool Calls,Unnecessary Tool Rate,Total Cost ($ USD),Cost per Correct Answer ($)
+direct_only,0.0%,0.0%,0.0%,100.0%,100.0%,100.0%,0.0%,0.1,0.061,67.7,0.0,0.0%,$0.000000,$0.000000
+always_retrieve,0.0%,20.0%,0.0%,100.0%,100.0%,100.0%,0.0%,0.1,0.06,100.4,1.0,0.0%,$0.000000,$0.000000
+fixed_verify,2.0%,20.0%,0.0%,100.0%,0.0%,100.0%,80.0%,0.2,0.058,50.8,1.2,0.0%,$0.000000,$0.000000
+adaptive_rules,0.0%,2.0%,0.0%,100.0%,100.0%,100.0%,0.0%,0.1,0.066,72.1,0.14,0.0%,$0.000000,$0.000000
+learned_cost_aware,0.0%,2.0%,0.0%,100.0%,0.0%,100.0%,12.0%,0.2,0.081,66.1,0.16,0.0%,$0.000000,$0.000000

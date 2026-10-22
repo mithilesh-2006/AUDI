@@ -89,9 +89,11 @@ class LocalCorpusRetriever:
         "this", "that", "these", "those", "am", "it", "its", "and", "or", "as", "did"
     }
 
+    TOKEN_RE = re.compile(r"\b\w{2,}\b")
+
     def _tokenize(self, text: str) -> List[str]:
         """Tokenize text and filter out generic grammatical stopwords."""
-        tokens = re.findall(r"\b\w{2,}\b", text.lower())
+        tokens = self.TOKEN_RE.findall(text.lower())
         return [t for t in tokens if t not in self.STOPWORDS]
 
     def add_document(self, doc_id: str, title: str, source: str, text: str, metadata: Optional[Dict[str, Any]] = None, save: bool = True) -> None:
@@ -109,8 +111,12 @@ class LocalCorpusRetriever:
             self.save_corpus()
 
     def _index_passages(self) -> None:
-        """Segment documents into passages (e.g., paragraphs or sentences) and index them."""
+        """Segment documents into passages and precompute lexical index structures."""
         self.passages = []
+        self._passage_token_counts = []
+        self._passage_lengths = []
+        self._doc_freqs = {}
+
         for doc in self.documents.values():
             # Split into paragraphs or chunks
             raw_paragraphs = [p.strip() for p in doc.text.split("\n\n") if p.strip()]
@@ -118,7 +124,6 @@ class LocalCorpusRetriever:
                 raw_paragraphs = [doc.text.strip()]
             
             for idx, para in enumerate(raw_paragraphs):
-                # If paragraph is very long, optionally chunk further, but for our local corpus paragraphs are ideal
                 p_id = f"{doc.doc_id}_p{idx+1}"
                 self.passages.append(RetrievedPassage(
                     passage_id=p_id,
@@ -129,8 +134,22 @@ class LocalCorpusRetriever:
                     relevance_score=0.0
                 ))
 
+        # Precompute passage token counts, lengths, and document frequencies once
+        for p in self.passages:
+            tokens = self._tokenize(p.text) + self._tokenize(p.doc_title) * 2  # Boost title
+            lengths = len(tokens)
+            self._passage_lengths.append(lengths)
+            counts: Dict[str, int] = {}
+            for t in tokens:
+                counts[t] = counts.get(t, 0) + 1
+            self._passage_token_counts.append(counts)
+            for t in set(tokens):
+                self._doc_freqs[t] = self._doc_freqs.get(t, 0) + 1
+
+        self._avg_dl = sum(self._passage_lengths) / max(len(self._passage_lengths), 1)
+
     def retrieve(self, query: str, top_k: int = 3) -> RetrievalResult:
-        """Retrieve top passages relevant to the query."""
+        """Retrieve top passages relevant to the query using precomputed index."""
         start_time = time.perf_counter()
         query_tokens = self._tokenize(query)
         
@@ -146,37 +165,21 @@ class LocalCorpusRetriever:
                 message="No query terms or empty corpus."
             )
 
-        # Compute term frequencies across passages
         n_passages = len(self.passages)
-        doc_freqs: Dict[str, int] = {}
-        passage_token_counts: List[Dict[str, int]] = []
-        passage_lengths: List[int] = []
-
-        for p in self.passages:
-            tokens = self._tokenize(p.text) + self._tokenize(p.doc_title) * 2  # Boost title
-            lengths = len(tokens)
-            passage_lengths.append(lengths)
-            counts: Dict[str, int] = {}
-            for t in tokens:
-                counts[t] = counts.get(t, 0) + 1
-            passage_token_counts.append(counts)
-            for t in set(tokens):
-                doc_freqs[t] = doc_freqs.get(t, 0) + 1
-
-        avg_dl = sum(passage_lengths) / max(len(passage_lengths), 1)
         k1 = 1.5
         b = 0.75
+        avg_dl = self._avg_dl
 
-        # Score passages using standard BM25 formula
+        # Score passages using standard BM25 formula against precomputed index
         scored_passages: List[RetrievedPassage] = []
         for i, p in enumerate(self.passages):
             score = 0.0
-            p_counts = passage_token_counts[i]
-            dl = passage_lengths[i]
+            p_counts = self._passage_token_counts[i]
+            dl = self._passage_lengths[i]
             
             for q_term in set(query_tokens):
                 if q_term in p_counts:
-                    df = doc_freqs.get(q_term, 0)
+                    df = self._doc_freqs.get(q_term, 0)
                     idf = math.log((n_passages - df + 0.5) / (df + 0.5) + 1.0)
                     tf = p_counts[q_term]
                     denom = tf + k1 * (1.0 - b + b * (dl / avg_dl))

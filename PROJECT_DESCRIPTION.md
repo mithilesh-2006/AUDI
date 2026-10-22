@@ -5,7 +5,8 @@
 > **System Codename:** AUDI (*Adaptive Uncertainty-Driven Inference*)  
 > **Implementation Stage:** Full Working Research Prototype & Multi-Policy Evaluation Suite (Phases 1–5 Complete)  
 > **Repository:** `d:\Adaptive-Uncertainty-Driven-Inference`  
-> **Test Status:** 67/67 Unit Tests Passing across all modules  
+> **Test Status:** 70/70 Unit Tests Passing across all 12 modules  
+> **Dataset Asset:** `unified_eval_20000.csv` (20,000 queries across 4 task archetypes)  
 
 ---
 
@@ -310,7 +311,20 @@ This represents **less than 1%** of standard LLM generation latency, rendering t
 
 ## 8. Operating Instructions & Reproducibility
 
-### 8.1. Running the Web Application
+### 8.1. Running the Scientific Benchmark CLI (`benchmark.py`)
+Execute the multi-policy comparative benchmark on the unified 20,000-sample dataset:
+```bash
+# Evaluate 100 samples across all 5 policies with train-set calibration
+python benchmark.py --samples 100 --calibrate
+
+# Evaluate with custom trade-off lambda
+python benchmark.py --samples 50 --lambda-cost 0.7 --policies direct_only adaptive_rules learned_cost_aware
+
+# Force rebuild of stratified train/test benchmark splits
+python benchmark.py --prepare-splits --samples 100
+```
+
+### 8.2. Running the Web Application
 Launch the interactive Streamlit dashboard:
 ```bash
 streamlit run app.py
@@ -322,24 +336,27 @@ The application will open at `http://localhost:8501`, featuring 5 dedicated work
 4. **Local Knowledge Corpus:** Searchable BM25 passage viewer with live document addition.
 5. **Experiment Logs & Export:** Inspectable SQLite execution logs with one-click CSV export.
 
-### 8.2. Running the Command-Line Interface (CLI)
+### 8.3. Running the Command-Line Interface (CLI)
 Execute individual queries directly in terminal:
 ```bash
-# Arithmetic routing
+# Deterministic arithmetic
 python controller.py --query "Calculate (120 + 45) / 5"
 
 # Ambiguity clarification
 python controller.py --query "Which one is better?"
 
 # Factual retrieval & verification
-python controller.py --query "What is the elevation of Mount Everest?"
+python controller.py --query "What is the elevation of Mount Everest according to the 2020 survey?"
 
 # Speculation abstention
 python controller.py --query "Will Bitcoin hit $500,000 in 2035?"
+
+# Standard multi-action demonstration suite
+python controller.py --demo
 ```
 
-### 8.3. Running the Test Suite
-Execute the full test suite (all 67 tests across 12 test modules):
+### 8.4. Running the Test Suite
+Execute the full test suite (all 70 tests across 12 test modules):
 ```bash
 python test_controller.py
 ```

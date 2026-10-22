@@ -21,6 +21,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 import requests
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 
 @dataclass
@@ -116,7 +119,7 @@ class OpenAIProvider(BaseLLMProvider):
     """OpenAI API adapter using standard HTTP requests."""
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None, timeout: float = 15.0):
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY", "")
+        self.api_key = api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.timeout = timeout
 
@@ -222,8 +225,8 @@ class GeminiProvider(BaseLLMProvider):
     """Google Gemini API adapter via REST."""
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None, timeout: float = 15.0):
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
-        self.model = model or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        self.api_key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY", "")
+        self.model = model or os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
         self.timeout = timeout
 
     def generate(self, prompt: str, system_prompt: Optional[str] = None, max_tokens: int = 500) -> LLMResponse:

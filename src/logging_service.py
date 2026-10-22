@@ -80,8 +80,10 @@ class LoggingService:
 
     def _init_sqlite(self) -> None:
         """Create sqlite tables if not present."""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         try:
+            conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA synchronous = NORMAL;")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS runs (
                     run_id TEXT PRIMARY KEY,
@@ -130,61 +132,78 @@ class LoggingService:
         finally:
             conn.close()
 
+    def _get_connection(self) -> sqlite3.Connection:
+        """Return or initialize thread-safe persistent SQLite connection with WAL mode."""
+        if not hasattr(self, "_conn") or self._conn is None:
+            self._conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
+            self._conn.execute("PRAGMA journal_mode = WAL;")
+            self._conn.execute("PRAGMA synchronous = NORMAL;")
+        return self._conn
+
+    def close(self) -> None:
+        """Close SQLite connection if open."""
+        if hasattr(self, "_conn") and self._conn is not None:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+
+    def __del__(self) -> None:
+        self.close()
+
     def log_run(self, record: RunRecord) -> str:
-        """Persist record to SQLite and JSONL."""
-        # 1. SQLite insert
-        conn = sqlite3.connect(self.db_path)
-        try:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO runs (
-                    run_id, timestamp, query, policy_name, selected_action,
-                    decision_rationale, answer_or_result, heuristic_uncertainty,
-                    observable_signals, evidence_references, verification_status,
-                    supported_claims_count, unsupported_claims_count, model_name,
-                    is_mock_model, prompt_tokens, completion_tokens, total_tokens,
-                    model_calls_count, tool_calls_count, latency_ms,
-                    estimated_cost_units, measured_monetary_usd, reference_answer,
-                    is_correct, benchmark_category, prompt_version,
-                    generation_settings, model_reported_confidence, tool_errors
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    record.run_id,
-                    record.timestamp,
-                    record.query,
-                    record.policy_name,
-                    record.selected_action,
-                    record.decision_rationale,
-                    record.answer_or_result,
-                    record.heuristic_uncertainty,
-                    json.dumps(record.observable_signals),
-                    json.dumps(record.evidence_references),
-                    record.verification_status,
-                    record.supported_claims_count,
-                    record.unsupported_claims_count,
-                    record.model_name,
-                    1 if record.is_mock_model else 0,
-                    record.prompt_tokens,
-                    record.completion_tokens,
-                    record.total_tokens,
-                    record.model_calls_count,
-                    record.tool_calls_count,
-                    record.latency_ms,
-                    record.estimated_cost_units,
-                    record.measured_monetary_usd,
-                    record.reference_answer,
-                    1 if record.is_correct is True else (0 if record.is_correct is False else None),
-                    record.benchmark_category,
-                    record.prompt_version,
-                    json.dumps(record.generation_settings),
-                    record.model_reported_confidence,
-                    record.tool_errors
-                )
+        """Persist record to SQLite and JSONL efficiently."""
+        # 1. SQLite insert with connection reuse
+        conn = self._get_connection()
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO runs (
+                run_id, timestamp, query, policy_name, selected_action,
+                decision_rationale, answer_or_result, heuristic_uncertainty,
+                observable_signals, evidence_references, verification_status,
+                supported_claims_count, unsupported_claims_count, model_name,
+                is_mock_model, prompt_tokens, completion_tokens, total_tokens,
+                model_calls_count, tool_calls_count, latency_ms,
+                estimated_cost_units, measured_monetary_usd, reference_answer,
+                is_correct, benchmark_category, prompt_version,
+                generation_settings, model_reported_confidence, tool_errors
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record.run_id,
+                record.timestamp,
+                record.query,
+                record.policy_name,
+                record.selected_action,
+                record.decision_rationale,
+                record.answer_or_result,
+                record.heuristic_uncertainty,
+                json.dumps(record.observable_signals),
+                json.dumps(record.evidence_references),
+                record.verification_status,
+                record.supported_claims_count,
+                record.unsupported_claims_count,
+                record.model_name,
+                1 if record.is_mock_model else 0,
+                record.prompt_tokens,
+                record.completion_tokens,
+                record.total_tokens,
+                record.model_calls_count,
+                record.tool_calls_count,
+                record.latency_ms,
+                record.estimated_cost_units,
+                record.measured_monetary_usd,
+                record.reference_answer,
+                1 if record.is_correct is True else (0 if record.is_correct is False else None),
+                record.benchmark_category,
+                record.prompt_version,
+                json.dumps(record.generation_settings),
+                record.model_reported_confidence,
+                record.tool_errors
             )
-            conn.commit()
-        finally:
-            conn.close()
+        )
+        conn.commit()
 
         # 2. Append to JSONL
         try:
@@ -197,7 +216,7 @@ class LoggingService:
 
     def get_recent_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Fetch latest records from SQLite."""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         try:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM runs ORDER BY timestamp DESC LIMIT ?", (limit,))
@@ -208,7 +227,7 @@ class LoggingService:
 
     def get_dataframe(self) -> pd.DataFrame:
         """Load all runs into a pandas DataFrame."""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         try:
             return pd.read_sql_query("SELECT * FROM runs ORDER BY timestamp DESC", conn)
         finally:

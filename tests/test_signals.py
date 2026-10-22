@@ -43,6 +43,94 @@ class TestSignalExtractor(unittest.TestCase):
                 self.assertIsNotNone(signals.ambiguity_reason)
                 self.assertGreaterEqual(signals.heuristic_uncertainty_score, 0.70)
 
+    def test_deterministic_directive_and_brief_queries(self):
+        """Ensure concise deterministic commands and quoted entities are not falsely flagged as ambiguous."""
+        actionable_directives = [
+            'spell "hello"',
+            'spell hello',
+            'define entropy',
+            'translate dog',
+            'say hello',
+            'echo test',
+            'reverse cat',
+            'capitalize python',
+            'repeat after me',
+            'hello',
+            'hi',
+        ]
+        for q in actionable_directives:
+            with self.subTest(query=q):
+                signals = SignalExtractor.extract(q)
+                self.assertFalse(signals.is_ambiguous, f"Directive '{q}' was falsely marked as ambiguous")
+                self.assertLessEqual(signals.heuristic_uncertainty_score, 0.35)
+
+    def test_antigravity_fallback_interceptor_floating_dual_referents(self):
+        """Test Antigravity Interceptor on floating dual referents with comparative triggers."""
+        unanchored_queries = [
+            "compare the two",
+            "which of the options is better",
+            "accuracy between both",
+            "what is the difference between the pair",
+            "tell me the difference between the alternatives",
+            "which of these two is faster",
+            "compare both",
+        ]
+        for q in unanchored_queries:
+            with self.subTest(query=q):
+                signals = SignalExtractor.extract(q)
+                self.assertTrue(signals.is_ambiguous, f"Failed to mark '{q}' as ambiguous")
+                self.assertTrue(signals.antigravity_intercepted, f"Failed to intercept '{q}'")
+                self.assertEqual(signals.heuristic_uncertainty_score, 0.85)
+                self.assertIn("Antigravity Fallback Interceptor", signals.ambiguity_reason)
+
+    def test_antigravity_fallback_interceptor_short_comparatives(self):
+        """Test Antigravity Lift on brief comparative queries (<7 tokens) lacking concrete proper nouns."""
+        brief_comparatives = [
+            "Which is better?",
+            "Is one worse?",
+            "compare results",
+            "what's the difference?",
+            "which is faster?",
+        ]
+        for q in brief_comparatives:
+            with self.subTest(query=q):
+                signals = SignalExtractor.extract(q)
+                self.assertTrue(signals.is_ambiguous, f"Failed to mark '{q}' as ambiguous")
+                self.assertTrue(signals.antigravity_intercepted, f"Failed to intercept '{q}'")
+                self.assertEqual(signals.heuristic_uncertainty_score, 0.85)
+
+    def test_antigravity_interceptor_anchored_comparatives_bypass(self):
+        """Test that comparative queries with concrete proper nouns/entities bypass the Antigravity Lift."""
+        grounded_comparatives = [
+            "Compare Python and Java",
+            "What is the difference between Rust and C++?",
+            "compare the two algorithms Dijkstra and A*",
+            "accuracy between 'Model A' and 'Model B'",
+        ]
+        for q in grounded_comparatives:
+            with self.subTest(query=q):
+                signals = SignalExtractor.extract(q)
+                self.assertFalse(
+                    signals.antigravity_intercepted,
+                    f"Grounded query '{q}' should NOT be intercepted by Antigravity"
+                )
+
+    def test_strict_regex_sanitization_no_collisions(self):
+        """Test that strict word-boundary regexes prevent partial substring collisions."""
+        # 1. 'temp' substring must NOT trigger 'temperature of'
+        sig_temp = SignalExtractor.extract("Bitcoin temp attempt drop")
+        self.assertFalse(sig_temp.is_factual_knowledge_request)
+        self.assertNotIn("temperature of", sig_temp.factual_keywords_detected)
+
+        # 2. 'history' must NOT trigger 'hi' greeting
+        sig_hist = SignalExtractor.extract("history of ancient rome")
+        self.assertFalse(sig_hist.is_ambiguous)
+
+        # 3. Genuine factual keyword with boundaries DOES trigger
+        sig_fact = SignalExtractor.extract("What is the average temperature of Venus?")
+        self.assertTrue(sig_fact.is_factual_knowledge_request)
+        self.assertIn("temperature of", sig_fact.factual_keywords_detected)
+
     def test_speculation_detection(self):
         speculative_queries = [
             "Will Bitcoin hit $500,000 in 2035?",
